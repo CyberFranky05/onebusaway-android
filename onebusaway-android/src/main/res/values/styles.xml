@@ -293,8 +293,12 @@
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsFloating">false</item>
         <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:windowAnimationStyle">@style/BottomSheetAnimation</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:backgroundDimAmount">0.7</item>
     </style>
 </resources>

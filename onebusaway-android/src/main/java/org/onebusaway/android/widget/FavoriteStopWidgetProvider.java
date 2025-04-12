@@ -75,7 +75,8 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     // Constants for arrivals display
     private static final int DEFAULT_ARRIVALS_TO_SHOW = 3;
-    private static final int MAX_ARRIVALS_TO_SHOW = 3;
+    private static final int MAX_ARRIVALS_TO_SHOW = 6; // Increased from 3 to 6 to match new layout
+    private static final int MAX_ARRIVALS_TO_LOAD = 10;
     private static final HashMap<Integer, Integer> sArrivalsToShow = new HashMap<>();
     
     // Intent action for loading more arrivals
@@ -85,10 +86,18 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        Log.d(TAG, "onUpdate called for " + appWidgetIds.length + " widgets");
+        Log.d(TAG, "onUpdate() called for " + appWidgetIds.length + " widgets");
         
-        // Update each widget in sequence
+        // Reset arrivals count for each widget to default
         for (int appWidgetId : appWidgetIds) {
+            sArrivalsToShow.put(appWidgetId, DEFAULT_ARRIVALS_TO_SHOW);
+        }
+
+        // Update every widget
+        for (int appWidgetId : appWidgetIds) {
+            Log.d(TAG, "Updating widget with ID: " + appWidgetId);
+            
+            // Create a new RemoteViews with the layout
             try {
                 // Store the number of arrivals we want to display
                 if (!sArrivalsToShow.containsKey(appWidgetId)) {
@@ -174,88 +183,166 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        Log.d(TAG, "onReceive: " + (intent != null ? intent.getAction() : "null intent"));
+        
+        if (intent == null || intent.getAction() == null) {
+            super.onReceive(context, intent);
+            return;
+        }
+        
         String action = intent.getAction();
-        Log.d(TAG, "onReceive: " + action);
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
         
-        // Force refresh for database changes
-        if (ACTION_DATABASE_CHANGED.equals(action)) {
-            updateAllWidgets(context);
-            return;
-        }
-        
-        // Handle system boot completed to ensure widget starts working after device restart
-        if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-            Log.d(TAG, "Device boot completed, updating widgets");
-            updateAllWidgets(context);
-            return;
-        }
-        
-        // Handle refresh action
-        if (ACTION_REFRESH.equals(action)) {
+        if (action.equals(ACTION_REFRESH)) {
+            // Handle refresh action
             int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
                     AppWidgetManager.INVALID_APPWIDGET_ID);
-                    
-            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && validateWidgetId(context, appWidgetId)) {
-                Log.d(TAG, "Refreshing widget ID: " + appWidgetId);
-                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
-                updateWidgetInitialState(context, appWidgetManager, appWidgetId);
-                updateWidget(context, appWidgetManager, appWidgetId);
-            } else {
-                Log.d(TAG, "Refreshing all widgets (ID not specified or invalid)");
-                forceRefreshAllWidgets(context);
+            
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                // Check if we have a selected stop ID for this widget
+                String selectedStopId = sSelectedStops.get(appWidgetId);
+                
+                Log.d(TAG, "Manual refresh requested for widget: " + appWidgetId + 
+                        (selectedStopId != null ? ", selected stop: " + selectedStopId : ", no selected stop"));
+                
+                // Show loading state first
+                RemoteViews loadingViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
+                forceWidgetVisible(loadingViews);
+                loadingViews.setTextViewText(R.id.stop_name, "REFRESHING...");
+                loadingViews.setTextViewText(R.id.direction, "Please wait");
+                loadingViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                loadingViews.setTextViewText(R.id.no_arrivals, "Refreshing arrival information...");
+                loadingViews.setImageViewResource(R.id.widget_refresh, R.drawable.refresh_animation);
+                appWidgetManager.updateAppWidget(appWidgetId, loadingViews);
+                
+                // If we have a selected stop, refresh directly with that stop ID
+                if (selectedStopId != null) {
+                    // Start a thread to refresh with delay to allow loading state to render
+                    new Thread(() -> {
+                        try {
+                            Thread.sleep(200);
+                            updateWidgetWithStopId(context, appWidgetManager, appWidgetId, selectedStopId);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error refreshing widget with selected stop: " + e.getMessage(), e);
+                            forceCompleteRefresh(context, appWidgetManager, appWidgetId);
+                        }
+                    }).start();
+                } else {
+                    // Otherwise do a complete refresh that will pick the most used stop
+                    forceCompleteRefresh(context, appWidgetManager, appWidgetId);
+                }
             }
-            return;
-        }
-        
-        // Handle stop selection
-        if (ACTION_SELECT_STOP.equals(action)) {
-            int appWidgetId = intent.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-            String stopId = intent.getStringExtra(EXTRA_STOP_ID);
-            String stopName = intent.getStringExtra(EXTRA_STOP_NAME);
+        } else if (action.equals(ACTION_AUTO_REFRESH)) {
+            // Handle automatic refresh
+            int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                    AppWidgetManager.INVALID_APPWIDGET_ID);
             
-            Log.d(TAG, "Received ACTION_SELECT_STOP for widget " + appWidgetId + 
-                   ", stop ID: " + stopId + ", stop name: " + stopName);
-            
-            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && stopId != null) {
-                // Validate widget ID
-                if (!validateWidgetId(context, appWidgetId)) {
-                    Log.e(TAG, "Widget ID is not valid: " + appWidgetId);
-                    
-                    // Try to refresh all widgets anyway
-                    forceRefreshAllWidgets(context);
-                    return;
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                // Check if we have a selected stop ID for this widget
+                String selectedStopId = sSelectedStops.get(appWidgetId);
+                
+                Log.d(TAG, "Auto refresh timer fired for widget: " + appWidgetId +
+                        (selectedStopId != null ? ", selected stop: " + selectedStopId : ", no selected stop"));
+                
+                // If we have a selected stop, refresh directly with that stop ID
+                if (selectedStopId != null) {
+                    // Start a thread to refresh
+                    new Thread(() -> {
+                        try {
+                            updateWidgetWithStopId(context, appWidgetManager, appWidgetId, selectedStopId);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error in auto refresh thread: " + e.getMessage(), e);
+                        }
+                    }).start();
+                } else {
+                    // Otherwise do a regular update that will pick the most used stop
+                    updateWidget(context, appWidgetManager, appWidgetId);
                 }
                 
-                Log.d(TAG, "Setting selected stop for widget " + appWidgetId + ": " + stopId);
-                
-                // Store the selected stop for this widget
-                sSelectedStops.put(appWidgetId, stopId);
-                
-                // Update widget with the selected stop
-                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
-                updateWidgetWithStopId(context, appWidgetManager, appWidgetId, stopId);
-                
-                // Log current selected stops map for debugging
-                StringBuilder sb = new StringBuilder("Current selected stops: ");
-                for (Integer widgetId : sSelectedStops.keySet()) {
-                    sb.append("[Widget ").append(widgetId).append(" -> ")
-                      .append(sSelectedStops.get(widgetId)).append("] ");
-                }
-                Log.d(TAG, sb.toString());
-            } else {
-                Log.e(TAG, "Invalid widget ID or stop ID in ACTION_SELECT_STOP. Widget ID: " + 
-                      appWidgetId + ", Stop ID: " + stopId);
+                // Reschedule next auto refresh
+                scheduleAutoRefresh(context, appWidgetId);
             }
-            return;
+        } else if (action.equals(ACTION_SELECT_STOP)) {
+            // Handle stop selection from bottom sheet
+            int appWidgetId = intent.getIntExtra(EXTRA_WIDGET_ID, 
+                    AppWidgetManager.INVALID_APPWIDGET_ID);
+            
+            if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
+                appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                        AppWidgetManager.INVALID_APPWIDGET_ID);
+            }
+            
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                String stopId = intent.getStringExtra(EXTRA_STOP_ID);
+                String stopName = intent.getStringExtra(EXTRA_STOP_NAME);
+                
+                Log.d(TAG, "Received stop selection for widget " + appWidgetId + 
+                        ": stop ID=" + stopId + ", name=" + stopName);
+                
+                if (stopId != null) {
+                    // Store the selected stop for this widget ID
+                    sSelectedStops.put(appWidgetId, stopId);
+                    
+                    // Show loading state
+                    RemoteViews loadingViews = new RemoteViews(context.getPackageName(), 
+                            R.layout.widget_favorite_stop);
+                    forceWidgetVisible(loadingViews);
+                    loadingViews.setTextViewText(R.id.stop_name, stopName != null ? stopName.toUpperCase() : "SELECTED STOP");
+                    loadingViews.setTextViewText(R.id.direction, "Loading...");
+                    loadingViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                    loadingViews.setTextViewText(R.id.no_arrivals, "Loading arrivals...");
+                    appWidgetManager.updateAppWidget(appWidgetId, loadingViews);
+                    
+                    // Update widget with the selected stop
+                    updateWidgetWithStopId(context, appWidgetManager, appWidgetId, stopId);
+                } else {
+                    Log.e(TAG, "Received null stop ID in ACTION_SELECT_STOP");
+                }
+            } else {
+                Log.e(TAG, "Received invalid widget ID in ACTION_SELECT_STOP");
+            }
+        } else if (action.equals(ACTION_SHOW_STOP_DROPDOWN)) {
+            // Handle click on the stop selector
+            int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                    AppWidgetManager.INVALID_APPWIDGET_ID);
+            
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                Log.d(TAG, "Showing stop selection for widget " + appWidgetId);
+                // Launch the stop selector activity
+                Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
+                selectorIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
+                selectorIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                selectorIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(selectorIntent);
+            }
+        } else if (action.equals(ACTION_LOAD_MORE)) {
+            // Handle load more arrivals action
+            int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                    AppWidgetManager.INVALID_APPWIDGET_ID);
+            
+            Log.d(TAG, "Load more arrivals for widget " + appWidgetId);
+            if (validateWidgetId(context, appWidgetId)) {
+                // Load more arrivals for this widget
+                String stopId = sSelectedStops.get(appWidgetId);
+                if (stopId != null) {
+                    // Increase the number of arrivals to show
+                    Integer currentArrivals = sArrivalsToShow.getOrDefault(appWidgetId, DEFAULT_ARRIVALS_TO_SHOW);
+                    int newArrivalsCount = Math.min(currentArrivals + 3, MAX_ARRIVALS_TO_SHOW);
+                    
+                    // Update stored value
+                    sArrivalsToShow.put(appWidgetId, newArrivalsCount);
+                    
+                    Log.d(TAG, "Increasing arrivals count from " + currentArrivals + " to " + newArrivalsCount + " for widget " + appWidgetId);
+                    
+                    // Update the widget with the new arrivals count
+                    updateWidgetWithStopId(context, appWidgetManager, appWidgetId, stopId);
+                } else {
+                    Log.e(TAG, "No selected stop found for widget " + appWidgetId);
+                }
+            }
         }
         
-        // Handle debug action for force refreshing
-        if ("org.onebusaway.android.DEBUG_UPDATE_WIDGET".equals(action)) {
-            Log.d(TAG, "Debug force refresh requested");
-            forceRefreshAllWidgets(context);
-            return;
-        }
-        
+        // Handle standard widget actions
         super.onReceive(context, intent);
     }
 
@@ -309,13 +396,21 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     @Override
     public void onDeleted(Context context, int[] appWidgetIds) {
-        Log.d(TAG, "onDeleted called for " + appWidgetIds.length + " widgets");
-        // Cancel auto-refresh for each deleted widget
-        for (int appWidgetId : appWidgetIds) {
-            cancelAutoRefresh(context, appWidgetId);
-            sSelectedStops.remove(appWidgetId); // Clean up selected stops map
-            sArrivalsToShow.remove(appWidgetId); // Clean up arrivals count map
+        Log.d(TAG, "onDeleted: " + (appWidgetIds != null ? appWidgetIds.length : 0) + " widgets");
+        
+        if (appWidgetIds != null) {
+            for (int appWidgetId : appWidgetIds) {
+                // Clean up selected stops for deleted widgets
+                sSelectedStops.remove(appWidgetId);
+                
+                // Clean up arrivals count for deleted widgets
+                sArrivalsToShow.remove(appWidgetId);
+                
+                // Cancel any pending auto-refresh for this widget
+                cancelAutoRefresh(context, appWidgetId);
+            }
         }
+        
         super.onDeleted(context, appWidgetIds);
     }
 
@@ -363,6 +458,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
             views.setTextViewText(R.id.no_arrivals, "Please wait...");
             
+            // Hide the load more button by default
+            views.setViewVisibility(R.id.load_more_arrivals, View.GONE);
+            
             // Set up app icon to launch main activity
             Intent startAppIntent = new Intent(context, HomeActivity.class);
             startAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -398,36 +496,39 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     }
 
     private void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
-        Log.d(TAG, "updateWidget(" + appWidgetId + ") started");
-        
-        // Create new RemoteViews to avoid caching issues
+        Log.d(TAG, "updateWidget called for widget ID: " + appWidgetId);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
         
-        // Explicitly force all key elements to be visible to ensure proper sizing
-        views.setViewVisibility(R.id.widget_layout, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_header, View.VISIBLE);
-        views.setViewVisibility(R.id.stop_selector, View.VISIBLE);
-        views.setViewVisibility(R.id.dropdown_arrow, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_refresh, View.VISIBLE);
-        views.setViewVisibility(R.id.no_starred_stops, View.VISIBLE);
+        // Make sure all key views are visible to ensure proper sizing
+        forceWidgetVisible(views);
         
-        // Explicitly set backgrounds to ensure they're rendered
-        views.setInt(R.id.widget_layout, "setBackgroundResource", R.drawable.widget_background);
-        views.setInt(R.id.widget_header, "setBackgroundResource", R.drawable.widget_header_background);
-        
-        // Set default content
+        // Set loading text
         views.setTextViewText(R.id.stop_name, "LOADING...");
         views.setTextViewText(R.id.direction, "Please wait");
-        views.setTextViewText(R.id.no_starred_stops, "Widget loading...");
+        views.setTextViewText(R.id.no_arrivals, "Loading widget data...");
         
-        // Set intent to open the app when widget header is clicked
-        Intent startAppIntent = new Intent(context, HomeActivity.class);
-        startAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent startAppPendingIntent = PendingIntent.getActivity(context, 0, startAppIntent,
+        // Set up app icon click
+        Intent i = new Intent(context, HomeActivity.class);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(context, 0, i, 
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.app_icon, startAppPendingIntent);
+        views.setOnClickPendingIntent(R.id.app_icon, pi);
         
-        // Set intent for refreshing the widget
+        // Set up stop selector click to show bottom sheet with starred stops
+        Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
+        selectorIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
+        selectorIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        selectorIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent selectorPendingIntent = PendingIntent.getActivity(context, 
+                appWidgetId, // Use widget ID as request code to create unique pending intents
+                selectorIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        
+        // Apply the selector intent to both the stop selector area and dropdown arrow
+        views.setOnClickPendingIntent(R.id.stop_selector, selectorPendingIntent);
+        views.setOnClickPendingIntent(R.id.dropdown_arrow, selectorPendingIntent);
+        
+        // Set up refresh click
         Intent refreshIntent = new Intent(context, FavoriteStopWidgetProvider.class);
         refreshIntent.setAction(ACTION_REFRESH);
         refreshIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
@@ -440,12 +541,24 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         
         Log.d(TAG, "Initial loading state set for widget: " + appWidgetId);
         
-        // Load stop data in a background thread but with shorter delay to improve responsiveness
+        // Check if we have a selected stop ID for this widget
+        String selectedStopId = sSelectedStops.get(appWidgetId);
+        Log.d(TAG, "Selected stop ID for widget " + appWidgetId + ": " + selectedStopId);
+        
+        // Load stop data in a background thread with shorter delay to improve responsiveness
         new Thread(() -> {
             try {
                 // Small delay to ensure widget is rendered before loading data
-                Thread.sleep(250);
-                loadStopData(context, appWidgetManager, appWidgetId);
+                Thread.sleep(200);
+                
+                // If we have a previously selected stop, use it
+                if (selectedStopId != null) {
+                    Log.d(TAG, "Using previously selected stop: " + selectedStopId + " for widget " + appWidgetId);
+                    updateWidgetWithStopId(context, appWidgetManager, appWidgetId, selectedStopId);
+                } else {
+                    // Otherwise load the most frequently used stop
+                    loadStopData(context, appWidgetManager, appWidgetId);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error in updateWidget thread: " + e.getMessage(), e);
             }
@@ -456,24 +569,27 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         Log.d(TAG, "loadStopData started for widget: " + appWidgetId);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
         
-        // Force visibility of key elements for proper sizing
-        views.setViewVisibility(R.id.widget_layout, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_header, View.VISIBLE);
-        views.setViewVisibility(R.id.stop_selector, View.VISIBLE);
-        views.setViewVisibility(R.id.dropdown_arrow, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_refresh, View.VISIBLE);
-        
-        // Explicitly set backgrounds to ensure they're rendered
-        views.setInt(R.id.widget_layout, "setBackgroundResource", R.drawable.widget_background);
-        views.setInt(R.id.widget_header, "setBackgroundResource", R.drawable.widget_header_background);
+        // Force visibility of all key elements
+        forceWidgetVisible(views);
         
         // Set loading text
         views.setTextViewText(R.id.stop_name, "LOADING STOPS...");
         views.setTextViewText(R.id.direction, "Please wait");
-        
-        // Control visibility of no_starred_stops - only show when needed
-        views.setViewVisibility(R.id.no_starred_stops, View.VISIBLE);
         views.setTextViewText(R.id.no_starred_stops, "Loading starred stops...");
+
+        // Set up the stop selector and dropdown click intent
+        Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
+        selectorIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
+        selectorIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        selectorIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent selectorPendingIntent = PendingIntent.getActivity(context, 
+                appWidgetId, // Use appWidgetId as request code for unique intents
+                selectorIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        
+        // Apply the selector intent to both the stop selector and dropdown arrow
+        views.setOnClickPendingIntent(R.id.stop_selector, selectorPendingIntent);
+        views.setOnClickPendingIntent(R.id.dropdown_arrow, selectorPendingIntent);
         
         // Update status with loading state before database query
         appWidgetManager.updateAppWidget(appWidgetId, views);
@@ -522,6 +638,10 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 String uiName = c.getString(c.getColumnIndex(ObaContract.Stops.UI_NAME));
                 
                 Log.d(TAG, "Found stop: " + stopId + ", code: " + stopCode + ", name: " + stopName + ", uiName: " + uiName + ", dir: " + stopDirection);
+                
+                // Store this stop ID for this widget, so it's preserved during refresh
+                sSelectedStops.put(appWidgetId, stopId);
+                Log.d(TAG, "Saving selected stop " + stopId + " for widget " + appWidgetId);
                 
                 // Make sure to display text even if there are nulls
                 String displayName = !TextUtils.isEmpty(uiName) ? uiName : (stopName != null ? stopName : "Starred Stop");
@@ -662,6 +782,10 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 return;
             }
             
+            // Get the number of arrivals we should show for this widget
+            final int arrivalsToShow = sArrivalsToShow.getOrDefault(appWidgetId, DEFAULT_ARRIVALS_TO_SHOW);
+            Log.d(TAG, "Widget " + appWidgetId + " showing " + arrivalsToShow + " arrivals");
+            
             // Run network operation in a background thread
             new Thread(new Runnable() {
                 @Override
@@ -669,7 +793,8 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                     try {
                         // Get the OBA client
                         Log.d(TAG, "Making API request for stop " + stopId);
-                        ObaArrivalInfoResponse response = new ObaArrivalInfoRequest.Builder(context, stopId)
+                        // Get more arrivals by requesting a larger time window (60 minutes)
+                        ObaArrivalInfoResponse response = new ObaArrivalInfoRequest.Builder(context, stopId, 60)
                                 .build()
                                 .call();
                         Log.d(TAG, "API request completed for stop " + stopId);
@@ -690,6 +815,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                                         views.setViewVisibility(R.id.arrivals_list, View.GONE);
                                         views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
                                         views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals");
+                                        views.setViewVisibility(R.id.load_more_arrivals, View.GONE);
                                         appWidgetManager.updateAppWidget(appWidgetId, views);
                                         return;
                                     }
@@ -700,6 +826,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                                     
                                     // Configure each arrival row
                                     int rowsConfigured = 0;
+                                    int totalArrivals = Math.min(arrivalInfoArray.length, arrivalsToShow);
                                     
                                     for (ObaArrivalInfo arrivalInfo : arrivalInfoArray) {
                                         if (arrivalInfo == null) {
@@ -707,10 +834,11 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                                             continue;
                                         }
                                         
-                                        if (rowsConfigured >= MAX_ARRIVALS_TO_SHOW) break; // Show max 3 arrivals
+                                        if (rowsConfigured >= totalArrivals) break; // Show only the requested number of arrivals
                                         
                                         rowsConfigured++;
-                                        int rowId = rowsConfigured;
+                                        // Use the actual row number (1-based) and ensure it doesn't exceed MAX_ARRIVALS_TO_SHOW
+                                        int rowId = Math.min(rowsConfigured, MAX_ARRIVALS_TO_SHOW);
                                         
                                         String routeId = arrivalInfo.getRouteId();
                                         String routeName = arrivalInfo.getShortName();
@@ -796,6 +924,17 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                                         int timeColor = getArrivalTimeColor(context, isPredicted, scheduledTime, expectedTime);
                                         views.setTextColor(timeViewId, timeColor);
                                         
+                                        // Setup status indicator similar to main app
+                                        if (hasStatusText && statusViewId != 0) {
+                                            views.setViewVisibility(statusViewId, View.VISIBLE);
+                                            views.setTextViewText(statusViewId, statusText);
+                                            views.setInt(statusViewId, "setBackgroundColor", statusColor);
+                                            // Don't include status in arriving time text since it's in the indicator
+                                            statusText = "";
+                                        } else if (statusViewId != 0) {
+                                            views.setViewVisibility(statusViewId, View.GONE);
+                                        }
+                                        
                                         if (minutesUntil <= 0) {
                                             views.setTextViewText(timeViewId, "DUE NOW");
                                             views.setTextViewText(arrivingTimeViewId, "Arriving now" + statusText);
@@ -810,35 +949,60 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                                             views.setTextViewText(arrivingTimeViewId, formattedArrivalTime + statusText);
                                         }
                                         
-                                        // Apply status color to arriving time text
+                                        // Apply status color to arriving time text if status text is still present
                                         if (!statusText.isEmpty()) {
                                             views.setTextColor(arrivingTimeViewId, statusColor);
                                         } else {
                                             views.setTextColor(arrivingTimeViewId, context.getResources().getColor(R.color.theme_primary));
                                         }
-
+                                        
                                         // Make the row visible
                                         views.setViewVisibility(rowViewId, View.VISIBLE);
                                         
                                         // Set up click for each row
                                         try {
-                                            Intent intent = new Intent(context, ArrivalsListActivity.class);
-                                            intent.setData(Uri.withAppendedPath(ObaContract.Stops.CONTENT_URI, stopId));
-                                            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                            PendingIntent pendingIntent = PendingIntent.getActivity(context, rowId, intent, 
+                                            Intent rowIntent = new Intent(context, ArrivalsListActivity.class);
+                                            rowIntent.setData(Uri.withAppendedPath(ObaContract.Stops.CONTENT_URI, stopId));
+                                            rowIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                            PendingIntent rowPendingIntent = PendingIntent.getActivity(context, rowId, rowIntent, 
                                                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                                            views.setOnClickPendingIntent(rowViewId, pendingIntent);
+                                            views.setOnClickPendingIntent(rowViewId, rowPendingIntent);
                                         } catch (Exception e) {
                                             Log.e(TAG, "Error setting click listener for row " + rowId + ": " + e.getMessage());
                                         }
                                     }
                                     
-                                    // Hide any remaining rows
+                                    // Hide any unused rows
                                     for (int i = rowsConfigured + 1; i <= MAX_ARRIVALS_TO_SHOW; i++) {
                                         int rowViewId = getResourceId(context, "arrival_row_" + i, "id");
                                         if (rowViewId != 0) {
                                             views.setViewVisibility(rowViewId, View.GONE);
                                         }
+                                    }
+                                    
+                                    // Setup "Load More" button if there are more arrivals available
+                                    int loadMoreViewId = R.id.load_more_arrivals;
+                                    if (arrivalInfoArray.length > rowsConfigured && rowsConfigured < MAX_ARRIVALS_TO_SHOW) {
+                                        views.setViewVisibility(loadMoreViewId, View.VISIBLE);
+                                        
+                                        // Create intent for Load More button
+                                        Intent loadMoreIntent = new Intent(context, FavoriteStopWidgetProvider.class);
+                                        loadMoreIntent.setAction(ACTION_LOAD_MORE);
+                                        loadMoreIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                                        loadMoreIntent.putExtra(EXTRA_STOP_ID, stopId);
+                                        PendingIntent loadMorePendingIntent = PendingIntent.getBroadcast(
+                                                context, 
+                                                appWidgetId + 100, // Use a different request code
+                                                loadMoreIntent, 
+                                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                                        
+                                        views.setOnClickPendingIntent(loadMoreViewId, loadMorePendingIntent);
+                                        
+                                        // Update button text based on how many more arrivals are available
+                                        int remaining = Math.min(arrivalInfoArray.length - rowsConfigured, 3); // Show 3 more at a time
+                                        views.setTextViewText(loadMoreViewId, "Show " + remaining + " more arrival" + (remaining > 1 ? "s" : ""));
+                                    } else {
+                                        views.setViewVisibility(loadMoreViewId, View.GONE);
                                     }
                                     
                                     // Show legend text if any arrivals are scheduled (not real-time)
@@ -974,6 +1138,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         Log.d(TAG, "Forcing complete widget refresh for ID: " + appWidgetId);
         
         try {
+            // Get the current selected stop ID for this widget
+            String selectedStopId = sSelectedStops.get(appWidgetId);
+            
             // Create new RemoteViews to avoid caching issues
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
             
@@ -1006,13 +1173,22 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 try {
                     // Give the widget time to render
                     Thread.sleep(250);
-                    updateWidget(context, appWidgetManager, appWidgetId);
+                    
+                    // If we have a previously selected stop, use it directly
+                    if (selectedStopId != null) {
+                        Log.d(TAG, "Refreshing with selected stop: " + selectedStopId);
+                        updateWidgetWithStopId(context, appWidgetManager, appWidgetId, selectedStopId);
+                    } else {
+                        // Otherwise update normally (will use most used stop)
+                        updateWidget(context, appWidgetManager, appWidgetId);
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error in force refresh thread: " + e.getMessage(), e);
                 }
             }).start();
         } catch (Exception e) {
             Log.e(TAG, "Error in forceCompleteRefresh: " + e.getMessage(), e);
+            
             // Fall back to regular update
             updateWidget(context, appWidgetManager, appWidgetId);
         }
@@ -1023,169 +1199,120 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
      */
     private void updateWidgetWithStopId(Context context, AppWidgetManager appWidgetManager, 
                                       int appWidgetId, String stopId) {
-        Log.d(TAG, "Updating widget " + appWidgetId + " with stop ID: " + stopId);
+        Log.d(TAG, "updateWidgetWithStopId - widget: " + appWidgetId + ", stop: " + stopId);
         
-        // Create new RemoteViews and show loading state
+        if (stopId == null) {
+            Log.e(TAG, "Null stop ID provided, can't update widget");
+            return;
+        }
+        
+        // Create views with our layout
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
-        views.setTextViewText(R.id.stop_name, "Loading stop...");
-        views.setTextViewText(R.id.direction, "");
-        views.setViewVisibility(R.id.arrivals_list, View.GONE);
+        
+        // Ensure proper visibility
+        forceWidgetVisible(views);
+        
+        // Show loading state
+        views.setTextViewText(R.id.stop_name, "LOADING STOP...");
+        views.setTextViewText(R.id.direction, "Please wait");
         views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
-        views.setTextViewText(R.id.no_arrivals, "Fetching information...");
+        views.setTextViewText(R.id.no_arrivals, "Fetching data for selected stop...");
         
-        // Set refresh icon animation to indicate loading
-        views.setImageViewResource(R.id.widget_refresh, R.drawable.refresh_animation);
-        
-        // Make all key views visible to ensure proper sizing
-        views.setViewVisibility(R.id.widget_layout, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_header, View.VISIBLE);
-        views.setViewVisibility(R.id.stop_selector, View.VISIBLE);
-        views.setViewVisibility(R.id.dropdown_arrow, View.VISIBLE);
-        views.setViewVisibility(R.id.widget_refresh, View.VISIBLE);
-        
-        // Force the background to be visible
-        views.setInt(R.id.widget_layout, "setBackgroundResource", R.drawable.widget_background);
-        
-        // Set up dropdown button
-        Intent dropdownIntent = new Intent(context, StopSelectorActivity.class);
-        dropdownIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
-        dropdownIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent dropdownPendingIntent = PendingIntent.getActivity(context, appWidgetId, dropdownIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.dropdown_arrow, dropdownPendingIntent);
-        views.setOnClickPendingIntent(R.id.stop_selector, dropdownPendingIntent);
-        views.setOnClickPendingIntent(R.id.widget_header, dropdownPendingIntent);
-        
-        // Set up refresh button
-        Intent refreshIntent = new Intent(context, FavoriteStopWidgetProvider.class);
-        refreshIntent.setAction(ACTION_REFRESH);
-        refreshIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
-        PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, appWidgetId, refreshIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
-        
-        // Update the widget with loading state
         appWidgetManager.updateAppWidget(appWidgetId, views);
         
-        // Load stop info and arrivals in a background thread
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    // Get stop information - all in one query for performance
-                    Cursor c = context.getContentResolver().query(
-                            Uri.withAppendedPath(ObaContract.Stops.CONTENT_URI, stopId),
-                            new String[]{
-                                    ObaContract.Stops.NAME,
-                                    ObaContract.Stops.DIRECTION,
-                                    ObaContract.Stops.UI_NAME
-                            },
-                            null, null, null);
+        // Query for the stop information first
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "Starting background query for stop: " + stopId);
+                String displayName = "Selected Stop";
+                String direction = "";
+                
+                // Query for stop details
+                Cursor c = context.getContentResolver().query(
+                        Uri.withAppendedPath(ObaContract.Stops.CONTENT_URI, stopId),
+                        new String[] {
+                                ObaContract.Stops._ID,
+                                ObaContract.Stops.NAME,
+                                ObaContract.Stops.DIRECTION,
+                                ObaContract.Stops.UI_NAME
+                        },
+                        null,
+                        null,
+                        null);
+                
+                if (c != null && c.moveToFirst()) {
+                    String stopName = c.getString(c.getColumnIndex(ObaContract.Stops.NAME));
+                    String stopDirection = c.getString(c.getColumnIndex(ObaContract.Stops.DIRECTION));
+                    String uiName = c.getString(c.getColumnIndex(ObaContract.Stops.UI_NAME));
                     
-                    String stopName = "";
-                    String stopDirection = "";
-                    String uiName = "";
+                    // Use UI name if available, otherwise use stop name
+                    displayName = !TextUtils.isEmpty(uiName) ? uiName : (stopName != null ? stopName : stopId);
+                    direction = stopDirection != null ? UIUtils.getStopDirectionString(stopDirection) : "";
                     
-                    if (c != null && c.moveToFirst()) {
-                        stopName = c.getString(c.getColumnIndex(ObaContract.Stops.NAME));
-                        stopDirection = c.getString(c.getColumnIndex(ObaContract.Stops.DIRECTION));
-                        uiName = c.getString(c.getColumnIndex(ObaContract.Stops.UI_NAME));
+                    Log.d(TAG, "Found stop info: " + displayName + ", direction: " + direction);
+                    c.close();
+                } else {
+                    Log.w(TAG, "No stop info found for stop ID: " + stopId);
+                    if (c != null) {
                         c.close();
-                        
-                        // Format display texts
-                        String displayName = !TextUtils.isEmpty(uiName) ? uiName : (stopName != null ? stopName : stopId);
-                        String displayDirection = stopDirection != null ? UIUtils.getStopDirectionString(stopDirection) : "";
-                        
-                        // Update the stop info in the RemoteViews
-                        RemoteViews updatedViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
-                        
-                        // Make all key views visible
-                        updatedViews.setViewVisibility(R.id.widget_layout, View.VISIBLE);
-                        updatedViews.setViewVisibility(R.id.widget_header, View.VISIBLE);
-                        updatedViews.setViewVisibility(R.id.stop_selector, View.VISIBLE);
-                        updatedViews.setViewVisibility(R.id.dropdown_arrow, View.VISIBLE);
-                        updatedViews.setViewVisibility(R.id.widget_refresh, View.VISIBLE);
-                        
-                        // Set background
-                        updatedViews.setInt(R.id.widget_layout, "setBackgroundResource", R.drawable.widget_background);
-                        
-                        // Set the stop name and direction
-                        updatedViews.setTextViewText(R.id.stop_name, displayName.toUpperCase());
-                        updatedViews.setTextViewText(R.id.direction, displayDirection);
-                        
-                        // Set up dropdown button
-                        updatedViews.setOnClickPendingIntent(R.id.dropdown_arrow, dropdownPendingIntent);
-                        updatedViews.setOnClickPendingIntent(R.id.stop_selector, dropdownPendingIntent);
-                        updatedViews.setOnClickPendingIntent(R.id.widget_header, dropdownPendingIntent);
-                        
-                        // Set up refresh button
-                        updatedViews.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
-                        
-                        // Create an Intent to launch ArrivalsListActivity when clicked
-                        Intent intent = new Intent(context, ArrivalsListActivity.class);
-                        intent.setData(Uri.withAppendedPath(ObaContract.Stops.CONTENT_URI, stopId));
-                        intent.putExtra(ArrivalsListFragment.STOP_NAME, stopName);
-                        intent.putExtra(ArrivalsListFragment.STOP_DIRECTION, stopDirection);
-                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, 
-                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                        
-                        // Make arrivals lists clickable
-                        updatedViews.setOnClickPendingIntent(R.id.arrivals_list, pendingIntent);
-                        updatedViews.setOnClickPendingIntent(R.id.no_arrivals, pendingIntent);
-                        
-                        // Show loading for arrivals
-                        updatedViews.setViewVisibility(R.id.arrivals_list, View.GONE);
-                        updatedViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
-                        updatedViews.setTextViewText(R.id.no_arrivals, "Fetching arrivals...");
-                        
-                        // Show refresh animation while loading
-                        updatedViews.setImageViewResource(R.id.widget_refresh, R.drawable.refresh_animation);
-                        
-                        // Set legend text to hidden initially, it will be updated when arrivals are loaded
-                        updatedViews.setViewVisibility(R.id.legend_text, View.GONE);
-                        
-                        // Update the widget with stop info immediately
-                        appWidgetManager.updateAppWidget(appWidgetId, updatedViews);
-                        
-                        // Now load arrivals directly
-                        loadArrivalsDirectly(context, appWidgetManager, appWidgetId, stopId, displayName, stopDirection);
-                    } else {
-                        Log.e(TAG, "Could not find stop with ID: " + stopId);
-                        
-                        RemoteViews errorViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
-                        errorViews.setTextViewText(R.id.stop_name, "Error: Stop not found");
-                        errorViews.setTextViewText(R.id.direction, "");
-                        errorViews.setViewVisibility(R.id.arrivals_list, View.GONE);
-                        errorViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
-                        errorViews.setTextViewText(R.id.no_arrivals, "Could not find stop with ID: " + stopId);
-                        errorViews.setImageViewResource(R.id.widget_refresh, R.drawable.ic_refresh_white_24dp);
-                        
-                        // Set up refresh button
-                        errorViews.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
-                        
-                        appWidgetManager.updateAppWidget(appWidgetId, errorViews);
-                        
-                        if (c != null) {
-                            c.close();
-                        }
                     }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error loading stop info: " + e.getMessage(), e);
-                    
-                    RemoteViews errorViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
-                    errorViews.setTextViewText(R.id.stop_name, "Error loading stop");
-                    errorViews.setTextViewText(R.id.direction, "");
-                    errorViews.setViewVisibility(R.id.arrivals_list, View.GONE);
-                    errorViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
-                    errorViews.setTextViewText(R.id.no_arrivals, "Error: " + e.getMessage());
-                    errorViews.setImageViewResource(R.id.widget_refresh, R.drawable.ic_refresh_white_24dp);
-                    
-                    // Set up refresh button
-                    errorViews.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
-                    
-                    appWidgetManager.updateAppWidget(appWidgetId, errorViews);
                 }
+                
+                // Update widget with stop info as we found it
+                RemoteViews updatedViews = new RemoteViews(context.getPackageName(), 
+                        R.layout.widget_favorite_stop);
+                
+                // Ensure everything is visible
+                forceWidgetVisible(updatedViews);
+                
+                // Update stop name and direction
+                final String finalDisplayName = displayName;
+                final String finalDirection = direction;
+                
+                updatedViews.setTextViewText(R.id.stop_name, finalDisplayName.toUpperCase());
+                updatedViews.setTextViewText(R.id.direction, finalDirection);
+                
+                // Set up app icon click
+                Intent appIntent = new Intent(context, HomeActivity.class);
+                appIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                PendingIntent appPendingIntent = PendingIntent.getActivity(context, 0, appIntent, 
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                updatedViews.setOnClickPendingIntent(R.id.app_icon, appPendingIntent);
+                
+                // Set up stop selector click
+                Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
+                selectorIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
+                selectorIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                selectorIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                PendingIntent selectorPendingIntent = PendingIntent.getActivity(context, 
+                        appWidgetId, selectorIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                updatedViews.setOnClickPendingIntent(R.id.stop_selector, selectorPendingIntent);
+                updatedViews.setOnClickPendingIntent(R.id.dropdown_arrow, selectorPendingIntent);
+                
+                // Set up refresh click
+                Intent refreshIntent = new Intent(context, FavoriteStopWidgetProvider.class);
+                refreshIntent.setAction(ACTION_REFRESH);
+                refreshIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, appWidgetId, refreshIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                updatedViews.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
+                
+                // Update widget with the basic info
+                appWidgetManager.updateAppWidget(appWidgetId, updatedViews);
+                
+                // Load arrivals for this stop
+                loadArrivalsDirectly(context, appWidgetManager, appWidgetId, stopId, finalDisplayName, finalDirection);
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating widget with selected stop: " + e.getMessage(), e);
+                RemoteViews errorViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
+                forceWidgetVisible(errorViews);
+                errorViews.setTextViewText(R.id.stop_name, "ERROR");
+                errorViews.setTextViewText(R.id.direction, "Could not load stop");
+                errorViews.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                errorViews.setTextViewText(R.id.no_arrivals, "Error: " + e.getMessage());
+                appWidgetManager.updateAppWidget(appWidgetId, errorViews);
             }
         }).start();
     }
@@ -1202,6 +1329,10 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.e(TAG, "Cannot load arrivals - stopId is null");
                 return;
             }
+            
+            // Always store this stop ID for this widget, so it's preserved during refresh
+            sSelectedStops.put(appWidgetId, stopId);
+            Log.d(TAG, "Saving selected stop " + stopId + " for widget " + appWidgetId);
             
             // Get the current number of arrivals to show or use default
             int arrivalsToShow = sArrivalsToShow.getOrDefault(appWidgetId, DEFAULT_ARRIVALS_TO_SHOW);
@@ -1226,7 +1357,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             
             // Get the OBA client directly on this thread - performance optimization
             try {
-                ObaArrivalInfoResponse response = new ObaArrivalInfoRequest.Builder(context, stopId)
+                ObaArrivalInfoResponse response = new ObaArrivalInfoRequest.Builder(context, stopId, 60)
                         .build()
                         .call();
                 
@@ -1243,7 +1374,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 // Set up dropdown and refresh
                 Intent dropdownIntent = new Intent(context, StopSelectorActivity.class);
                 dropdownIntent.putExtra(EXTRA_WIDGET_ID, appWidgetId);
-                dropdownIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                // No need for FLAG_ACTIVITY_NEW_TASK as it's already in the manifest with singleInstance
                 PendingIntent dropdownPendingIntent = PendingIntent.getActivity(context, appWidgetId, dropdownIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                 arrivalsViews.setOnClickPendingIntent(R.id.dropdown_arrow, dropdownPendingIntent);
@@ -1292,7 +1423,8 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                         if (rowsConfigured >= arrivalsToShow) break; // Only show the specified number of arrivals
                         
                         rowsConfigured++;
-                        int rowId = rowsConfigured;
+                        // Use the actual row number (1-based) and ensure it doesn't exceed MAX_ARRIVALS_TO_SHOW
+                        int rowId = Math.min(rowsConfigured, MAX_ARRIVALS_TO_SHOW);
                         
                         String routeId = arrivalInfo.getRouteId();
                         String routeName = arrivalInfo.getShortName();
@@ -1341,7 +1473,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                             continue;
                         }
                         
-                        // Set route and destination 
+                        // Setup route and destination
                         arrivalsViews.setTextViewText(routeViewId, routeName);
                         arrivalsViews.setTextColor(routeViewId, context.getResources().getColor(R.color.theme_primary));
                         
@@ -1379,7 +1511,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                         arrivalsViews.setTextColor(timeViewId, timeColor);
                         
                         // Setup status indicator similar to main app
-                        if (statusViewId != 0) {
+                        if (hasStatusText && statusViewId != 0) {
                             arrivalsViews.setViewVisibility(statusViewId, View.VISIBLE);
                             arrivalsViews.setTextViewText(statusViewId, statusText);
                             arrivalsViews.setInt(statusViewId, "setBackgroundColor", statusColor);
@@ -1409,7 +1541,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                         } else {
                             arrivalsViews.setTextColor(arrivingTimeViewId, context.getResources().getColor(R.color.theme_primary));
                         }
-
+                        
                         // Make the row visible
                         arrivalsViews.setViewVisibility(rowViewId, View.VISIBLE);
                         
@@ -1434,13 +1566,29 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                         }
                     }
                     
-                    // Configure the "Load More" button if there are more arrivals available
+                    // Setup "Load More" button if there are more arrivals available
+                    int loadMoreViewId = R.id.load_more_arrivals;
                     if (arrivalInfoArray.length > rowsConfigured && rowsConfigured < MAX_ARRIVALS_TO_SHOW) {
-                        // More arrivals available to display
-                        Log.d(TAG, "More arrivals available but maximum display limit reached");
+                        arrivalsViews.setViewVisibility(loadMoreViewId, View.VISIBLE);
+                        
+                        // Create intent for Load More button
+                        Intent loadMoreIntent = new Intent(context, FavoriteStopWidgetProvider.class);
+                        loadMoreIntent.setAction(ACTION_LOAD_MORE);
+                        loadMoreIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                        loadMoreIntent.putExtra(EXTRA_STOP_ID, stopId);
+                        PendingIntent loadMorePendingIntent = PendingIntent.getBroadcast(
+                                context, 
+                                appWidgetId + 100, // Use a different request code
+                                loadMoreIntent, 
+                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                        
+                        arrivalsViews.setOnClickPendingIntent(loadMoreViewId, loadMorePendingIntent);
+                        
+                        // Update button text based on how many more arrivals are available
+                        int remaining = Math.min(arrivalInfoArray.length - rowsConfigured, 3); // Show 3 more at a time
+                        arrivalsViews.setTextViewText(loadMoreViewId, "Show " + remaining + " more arrival" + (remaining > 1 ? "s" : ""));
                     } else {
-                        // No more arrivals or reached maximum display limit
-                        Log.d(TAG, "No more arrivals to display");
+                        arrivalsViews.setViewVisibility(loadMoreViewId, View.GONE);
                     }
                     
                     // Show legend text if any arrivals are scheduled (not real-time)
@@ -1875,5 +2023,32 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             Log.e(TAG, "Error checking resources: " + e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * Forces a widget to be visible by ensuring all key elements have proper visibility settings
+     * Helps resolve common issues with widget rendering on various launchers
+     */
+    private void forceWidgetVisible(RemoteViews views) {
+        // Force visibility of main container
+        views.setViewVisibility(R.id.widget_layout, View.VISIBLE);
+        
+        // Force visibility of header elements
+        views.setViewVisibility(R.id.widget_header, View.VISIBLE);
+        views.setViewVisibility(R.id.stop_selector, View.VISIBLE);
+        views.setViewVisibility(R.id.dropdown_arrow, View.VISIBLE);
+        views.setViewVisibility(R.id.widget_refresh, View.VISIBLE);
+        views.setViewVisibility(R.id.app_icon, View.VISIBLE);
+        
+        // Make sure the stop name and direction are visible (even if empty)
+        views.setViewVisibility(R.id.stop_name, View.VISIBLE);
+        views.setViewVisibility(R.id.direction, View.VISIBLE);
+        
+        // Ensure backgrounds are explicitly set
+        views.setInt(R.id.widget_layout, "setBackgroundResource", R.drawable.widget_background);
+        views.setInt(R.id.widget_header, "setBackgroundResource", R.drawable.widget_header_background);
+        
+        // Ensure at least one message is visible in the content area
+        views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
     }
 } 

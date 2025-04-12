@@ -43,6 +43,7 @@ import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -51,6 +52,7 @@ import org.onebusaway.android.R;
 import org.onebusaway.android.app.Application;
 import org.onebusaway.android.io.elements.ObaRegion;
 import org.onebusaway.android.provider.ObaContract;
+import org.onebusaway.android.ui.HomeActivity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,11 +71,25 @@ public class StopSelectorActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Enable display over lock screen
+        Log.d(TAG, "StopSelectorActivity.onCreate() started");
+        
+        // Set the activity style as a dialog
+        setContentView(R.layout.activity_stop_selector);
+        
+        // Make it a proper dialog
         Window window = getWindow();
-        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        
+        // Set proper layout dimensions
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.width = WindowManager.LayoutParams.MATCH_PARENT;
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        params.gravity = Gravity.BOTTOM;
+        window.setAttributes(params);
+        
+        // Add dim to background
+        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        window.setDimAmount(0.7f);
         
         // Get widget ID
         Intent intent = getIntent();
@@ -81,6 +97,7 @@ public class StopSelectorActivity extends Activity {
             mAppWidgetId = intent.getIntExtra(
                     FavoriteStopWidgetProvider.EXTRA_WIDGET_ID, 
                     AppWidgetManager.INVALID_APPWIDGET_ID);
+            Log.d(TAG, "Got widget ID from intent: " + mAppWidgetId);
         }
         
         if (mAppWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
@@ -89,54 +106,29 @@ public class StopSelectorActivity extends Activity {
             return;
         }
         
-        // Set dialog style
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        setContentView(R.layout.activity_stop_selector);
-        
-        // Configure as bottom sheet
-        setupBottomSheetStyle();
-        
         // Fetch starred stops from database
         loadStarredStops();
         
-        // Add touch outside to dismiss
-        findViewById(R.id.stop_selector_root).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finish();
-            }
-        });
-
-        // Prevent clicks on the main container from dismissing
-        findViewById(R.id.stop_selector_container).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // Do nothing, prevent propagation
-            }
-        });
-    }
-    
-    private void setupBottomSheetStyle() {
-        Window window = getWindow();
+        // Set up touch handlers
+        View rootView = findViewById(R.id.stop_selector_root);
+        if (rootView != null) {
+            rootView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    finish();
+                }
+            });
+        }
         
-        // Set background to transparent
-        window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-        
-        // Set layout parameters
-        WindowManager.LayoutParams params = window.getAttributes();
-        params.gravity = Gravity.BOTTOM;
-        params.width = WindowManager.LayoutParams.MATCH_PARENT;
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
-        
-        // Use TYPE_TOAST to make sure it appears on top of everything
-        params.type = WindowManager.LayoutParams.TYPE_TOAST;
-        
-        // Apply parameters
-        window.setAttributes(params);
-        
-        // Add dim background
-        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        window.setDimAmount(0.6f);
+        View containerView = findViewById(R.id.stop_selector_container);
+        if (containerView != null) {
+            containerView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // Prevent propagation to root view
+                }
+            });
+        }
     }
     
     /**
@@ -153,19 +145,23 @@ public class StopSelectorActivity extends Activity {
                 selection += " AND " + ObaContract.Stops.REGION_ID + "=" + region.getId();
             }
             
+            Log.d(TAG, "Querying for starred stops with selection: " + selection);
+            
             // Query the content provider
             Cursor c = getContentResolver().query(
                     ObaContract.Stops.CONTENT_URI,
                     new String[]{
                             ObaContract.Stops._ID,
                             ObaContract.Stops.NAME,
-                            ObaContract.Stops.UI_NAME
+                            ObaContract.Stops.UI_NAME,
+                            ObaContract.Stops.DIRECTION
                     },
                     selection,
                     null,
                     ObaContract.Stops.USE_COUNT + " DESC");
             
             if (c != null) {
+                Log.d(TAG, "Found " + c.getCount() + " starred stops");
                 while (c.moveToNext()) {
                     String stopId = c.getString(c.getColumnIndex(ObaContract.Stops._ID));
                     String stopName = c.getString(c.getColumnIndex(ObaContract.Stops.NAME));
@@ -174,6 +170,7 @@ public class StopSelectorActivity extends Activity {
                     // Use UI name if available, otherwise use stop name
                     String displayName = !TextUtils.isEmpty(uiName) ? uiName : (stopName != null ? stopName : stopId);
                     
+                    Log.d(TAG, "Adding starred stop: " + stopId + " - " + displayName);
                     mStarredStops.add(new FavoriteStopWidgetProvider.StarredStop(stopId, displayName));
                 }
                 c.close();
@@ -205,24 +202,59 @@ public class StopSelectorActivity extends Activity {
                 container.removeAllViews();
                 container.addView(errorText);
                 
+                // Add a button that the user must tap to open the app
                 Button openAppButton = new Button(this);
                 openAppButton.setText("Open OneBusAway");
                 openAppButton.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        // Open main app
-                        Intent intent = new Intent(StopSelectorActivity.this, 
-                                org.onebusaway.android.ui.HomeActivity.class);
-                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
+                        // Open main app on button click
+                        try {
+                            Intent intent = new Intent(StopSelectorActivity.this, 
+                                    org.onebusaway.android.ui.HomeActivity.class);
+                            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                            finish();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error opening main app: " + e.getMessage(), e);
+                            Toast.makeText(StopSelectorActivity.this, 
+                                    "Error: " + e.getMessage(), 
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+                
+                // Add cancel button
+                Button cancelButton = new Button(this);
+                cancelButton.setText("Cancel");
+                cancelButton.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
                         finish();
                     }
                 });
                 
-                container.addView(openAppButton);
+                // Add buttons in a horizontal layout
+                LinearLayout buttonLayout = new LinearLayout(this);
+                buttonLayout.setOrientation(LinearLayout.HORIZONTAL);
+                buttonLayout.setGravity(Gravity.CENTER);
+                buttonLayout.setPadding(32, 16, 32, 32);
+                
+                // Set layout params for buttons
+                LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                buttonParams.setMargins(8, 0, 8, 0);
+                
+                buttonLayout.addView(cancelButton, buttonParams);
+                buttonLayout.addView(openAppButton, buttonParams);
+                
+                container.addView(buttonLayout);
             }
             return;
         }
+        
+        Log.d(TAG, "Setting up list view with " + mStarredStops.size() + " stops");
         
         // Create a better styled adapter with more visual feedback
         ArrayAdapter<FavoriteStopWidgetProvider.StarredStop> adapter = 
@@ -270,6 +302,7 @@ public class StopSelectorActivity extends Activity {
                     Intent intent = new Intent(StopSelectorActivity.this, FavoriteStopWidgetProvider.class);
                     intent.setAction(FavoriteStopWidgetProvider.ACTION_SELECT_STOP);
                     intent.putExtra(FavoriteStopWidgetProvider.EXTRA_WIDGET_ID, mAppWidgetId);
+                    intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, mAppWidgetId);
                     intent.putExtra(FavoriteStopWidgetProvider.EXTRA_STOP_ID, stop.getStopId());
                     intent.putExtra(FavoriteStopWidgetProvider.EXTRA_STOP_NAME, stop.getDisplayName());
                     
@@ -290,6 +323,12 @@ public class StopSelectorActivity extends Activity {
                     Toast.makeText(StopSelectorActivity.this, 
                             "Selected stop: " + stop.getDisplayName(), 
                             Toast.LENGTH_SHORT).show();
+                    
+                    // Force an immediate update to the widget
+                    AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(StopSelectorActivity.this);
+                    FavoriteStopWidgetProvider widgetProvider = new FavoriteStopWidgetProvider();
+                    widgetProvider.onReceive(StopSelectorActivity.this, intent);
+                    
                 } catch (Exception e) {
                     Log.e(TAG, "Error sending stop selection broadcast: " + e.getMessage(), e);
                     Toast.makeText(StopSelectorActivity.this,
@@ -301,5 +340,13 @@ public class StopSelectorActivity extends Activity {
                 finish();
             }
         });
+    }
+
+    @Override
+    public void finish() {
+        super.finish();
+        
+        // Apply slide-down animation when closing
+        overridePendingTransition(0, R.anim.slide_down);
     }
 } 
