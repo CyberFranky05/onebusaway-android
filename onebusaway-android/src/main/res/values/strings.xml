@@ -19,6 +19,9 @@
 
     <string name="app_name">OneBusAway</string>
 
+    <!-- Widget resources -->
+    <string name="widget_select_stop">Select a stop</string>
+
     <!-- Navigation Drawer -->
     <string name="navdrawer_item_nearby">Nearby</string>
     <string name="navdrawer_item_starred_stops">Starred stops</string>
@@ -1043,7 +1046,7 @@
 
     <string name="no_trip_planner_title">Google cost increase</string>
     <string name="no_trip_planner_message">Google is now charging OneBusAway for all trip plans (about $1,000 per month)!
-        OBA is an open source project and can\’t pay for these costs. We\'ve created a non-profit and applied to Google for Nonprofits, but are still waiting for approval.
+        OBA is an open source project and can\t pay for these costs. We\'ve created a non-profit and applied to Google for Nonprofits, but are still waiting for approval.
         In the mean-time, we\'ve had to shut down the trip planner. If you\'d like to express your support for OneBusAway to Google for Nonprofits,
         please reach out to them on Twitter at https://twitter.com/googlenonprofit?s=17!</string>
 
@@ -1317,4 +1320,7 @@
     <string name="arrival_reminder_second_description">Set reminder for second arrival</string>
     <string name="arrival_options_first_description">Options for first arrival</string>
     <string name="arrival_options_second_description">Options for second arrival</string>
+    <string name="refresh">Refresh</string>
+    <string name="select_stop_title">Select a stop</string>
+    <string name="widget_select_favorite_stop">Select a favorite stop for widget</string>
 </resources>

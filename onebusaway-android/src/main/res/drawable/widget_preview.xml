@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="110dp"
+    android:viewportWidth="250"
+    android:viewportHeight="110">
+    
+    <!-- Widget background -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#DDDDDD"
+        android:strokeWidth="1"
+        android:pathData="M8,0 L242,0 C246.4,0 250,3.6 250,8 L250,102 C250,106.4 246.4,110 242,110 L8,110 C3.6,110 0,106.4 0,102 L0,8 C0,3.6 3.6,0 8,0 Z" />
+    
+    <!-- Header background -->
+    <path
+        android:fillColor="@color/theme_primary"
+        android:pathData="M8,0 L242,0 C246.4,0 250,3.6 250,8 L250,40 L0,40 L0,8 C0,3.6 3.6,0 8,0 Z" />
+    
+    <!-- Stop name text placeholder -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,15 L170,15 L170,25 L30,25 Z" />
+    
+    <!-- Direction text placeholder -->
+    <path
+        android:fillColor="#EEEEEE"
+        android:pathData="M30,30 L150,30 L150,36 L30,36 Z" />
+    
+    <!-- Icons -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M200,20 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+    
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M230,20 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+    
+    <!-- Arrival rows placeholders -->
+    <path
+        android:fillColor="#F8F8F8"
+        android:pathData="M20,50 L230,50 L230,70 L20,70 Z" />
+    
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,75 L230,75 L230,95 L20,95 Z" />
+</vector> 

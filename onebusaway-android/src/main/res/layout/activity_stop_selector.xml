@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Root container that captures outside clicks to dismiss -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/stop_selector_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <!-- Main bottom sheet container -->
+    <LinearLayout
+        android:id="@+id/stop_selector_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@android:color/white"
+        android:layout_gravity="bottom"
+        android:elevation="16dp"
+        android:paddingBottom="16dp">
+
+        <!-- Bottom sheet header with handle -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp">
+            
+            <View
+                android:layout_width="32dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center_horizontal"
+                android:background="#CCCCCC"
+                android:layout_marginBottom="8dp" />
+        </FrameLayout>
+        
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_select_stop"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="16dp" />
+
+        <ListView
+            android:id="@+id/stop_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minWidth="300dp"
+            android:maxHeight="400dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:clipToPadding="false"
+            android:scrollbars="none"
+            android:overScrollMode="never" />
+
+    </LinearLayout>
+</FrameLayout> 

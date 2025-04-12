@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget layout with standard header and arrival information -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="4dp">
+
+    <LinearLayout
+        android:id="@+id/widget_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@drawable/widget_background"
+        android:visibility="visible">
+
+        <!-- Widget Header -->
+        <LinearLayout
+            android:id="@+id/widget_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/widget_header_background"
+            android:padding="8dp">
+
+            <!-- App Icon -->
+            <ImageView
+                android:id="@+id/app_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:contentDescription="@string/app_name"
+                android:src="@mipmap/ic_launcher" />
+
+            <!-- Stop Selector - with name and dropdown -->
+            <LinearLayout
+                android:id="@+id/stop_selector"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical"
+                android:layout_gravity="center_vertical">
+
+                <!-- Stop Name -->
+                <TextView
+                    android:id="@+id/stop_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="@android:color/white"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <!-- Direction Text -->
+                <TextView
+                    android:id="@+id/direction"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- Dropdown Arrow -->
+            <ImageView
+                android:id="@+id/dropdown_arrow"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginLeft="8dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Select stop"
+                android:src="@drawable/ic_arrow_drop_down_white_24dp" />
+
+            <!-- Refresh Button -->
+            <ImageView
+                android:id="@+id/widget_refresh"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginLeft="8dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Refresh"
+                android:src="@drawable/ic_refresh_white_24dp" />
+        </LinearLayout>
+
+        <!-- Content container -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="8dp">
+
+            <!-- Arrivals list -->
+            <LinearLayout
+                android:id="@+id/arrivals_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="visible">
+
+                <!-- Arrival Row 1 -->
+                <LinearLayout
+                    android:id="@+id/arrival_row_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_background"
+                    android:layout_marginBottom="6dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp">
+
+                    <!-- Top row with route, destination and time -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <!-- Route number on left -->
+                        <TextView
+                            android:id="@+id/route_1"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textStyle="bold"
+                            android:textColor="@color/theme_primary"
+                            android:textSize="18sp"
+                            android:minWidth="40dp" />
+
+                        <!-- Destination in middle -->
+                        <TextView
+                            android:id="@+id/destination_1"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/black" />
+
+                        <!-- Time on right -->
+                        <TextView
+                            android:id="@+id/time_1"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:gravity="end"
+                            android:minWidth="70dp" />
+                    </LinearLayout>
+
+                    <!-- Arriving time below the destination -->
+                    <TextView
+                        android:id="@+id/arriving_time_1"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:textSize="14sp"
+                        android:textColor="@color/theme_primary" />
+
+                    <!-- Status indicator -->
+                    <TextView
+                        android:id="@+id/status_1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:paddingLeft="6dp"
+                        android:paddingRight="6dp"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="2dp"
+                        android:textSize="12sp"
+                        android:textColor="@android:color/white"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Arrival Row 2 -->
+                <LinearLayout
+                    android:id="@+id/arrival_row_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_background"
+                    android:layout_marginBottom="6dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp">
+
+                    <!-- Top row with route, destination and time -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <!-- Route number on left -->
+                        <TextView
+                            android:id="@+id/route_2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textStyle="bold"
+                            android:textColor="@color/theme_primary"
+                            android:textSize="18sp"
+                            android:minWidth="40dp" />
+
+                        <!-- Destination in middle -->
+                        <TextView
+                            android:id="@+id/destination_2"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/black" />
+
+                        <!-- Time on right -->
+                        <TextView
+                            android:id="@+id/time_2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:gravity="end"
+                            android:minWidth="70dp" />
+                    </LinearLayout>
+
+                    <!-- Arriving time below the destination -->
+                    <TextView
+                        android:id="@+id/arriving_time_2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:textSize="14sp"
+                        android:textColor="@color/theme_primary" />
+
+                    <!-- Status indicator -->
+                    <TextView
+                        android:id="@+id/status_2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:paddingLeft="6dp"
+                        android:paddingRight="6dp"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="2dp"
+                        android:textSize="12sp"
+                        android:textColor="@android:color/white"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Arrival Row 3 -->
+                <LinearLayout
+                    android:id="@+id/arrival_row_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_background"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp">
+
+                    <!-- Top row with route, destination and time -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <!-- Route number on left -->
+                        <TextView
+                            android:id="@+id/route_3"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textStyle="bold"
+                            android:textColor="@color/theme_primary"
+                            android:textSize="18sp"
+                            android:minWidth="40dp" />
+
+                        <!-- Destination in middle -->
+                        <TextView
+                            android:id="@+id/destination_3"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/black" />
+
+                        <!-- Time on right -->
+                        <TextView
+                            android:id="@+id/time_3"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:gravity="end"
+                            android:minWidth="70dp" />
+                    </LinearLayout>
+
+                    <!-- Arriving time below the destination -->
+                    <TextView
+                        android:id="@+id/arriving_time_3"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:textSize="14sp"
+                        android:textColor="@color/theme_primary" />
+
+                    <!-- Status indicator -->
+                    <TextView
+                        android:id="@+id/status_3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginLeft="40dp"
+                        android:layout_marginStart="40dp"
+                        android:paddingLeft="6dp"
+                        android:paddingRight="6dp"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="2dp"
+                        android:textSize="12sp"
+                        android:textColor="@android:color/white"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- No arrivals message -->
+            <TextView
+                android:id="@+id/no_arrivals"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/card_background"
+                android:padding="16dp"
+                android:gravity="center"
+                android:text="Loading arrivals..."
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <!-- Legend text for scheduled arrivals -->
+            <TextView
+                android:id="@+id/legend_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:text="* Scheduled times (not real-time)"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+            <!-- Last updated text -->
+            <TextView
+                android:id="@+id/no_starred_stops"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:text="Last updated: "
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout> 

@@ -269,4 +269,32 @@
     <style name="CustomText2" parent="TextAppearance.ShowcaseView.Detail.Light">
         <item name="android:textColor">@color/tutorial_text</item>
     </style>
+
+    <!-- Widget bottom sheet style -->
+    <style name="BottomSheetDialog" parent="@android:style/Theme.DeviceDefault.Dialog">
+        <item name="android:windowFrame">@null</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:background">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@style/BottomSheetAnimation</item>
+    </style>
+    
+    <style name="BottomSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/slide_up</item>
+        <item name="android:windowExitAnimation">@anim/slide_down</item>
+    </style>
+
+    <!-- Widget dialog style -->
+    <style name="WidgetPickerDialog">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

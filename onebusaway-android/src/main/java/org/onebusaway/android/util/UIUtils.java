@@ -149,7 +149,7 @@ public final class UIUtils {
     public static void setupSearch(Activity activity, Menu menu) {
         SearchManager searchManager =
                 (SearchManager) activity.getSystemService(Context.SEARCH_SERVICE);
-        final MenuItem searchMenu = menu.findItem(R.id.action_search);
+        final MenuItem searchMenu = menu.findItem(R.id.search);
         SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchMenu);
         searchView.setSearchableInfo(
                 searchManager.getSearchableInfo(activity.getComponentName()));
@@ -186,6 +186,9 @@ public final class UIUtils {
     }
 
     public static int getStopDirectionText(String direction) {
+        if (direction == null) {
+            return R.string.direction_none;
+        }
         if (direction.equals("N")) {
             return R.string.direction_n;
         } else if (direction.equals("NW")) {
@@ -204,6 +207,19 @@ public final class UIUtils {
             return R.string.direction_ne;
         } else {
             return R.string.direction_none;
+        }
+    }
+
+    public static String getStopDirectionString(String direction) {
+        if (direction == null) {
+            return "";
+        }
+        
+        int resourceId = getStopDirectionText(direction);
+        if (resourceId == R.string.direction_none) {
+            return "";
+        } else {
+            return Application.get().getString(resourceId);
         }
     }
 

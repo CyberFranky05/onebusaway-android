@@ -17,12 +17,29 @@
       xmlns:app="http://schemas.android.com/apk/res-auto">
     <group
             android:id="@+id/main_options_menu_group">
-        <item android:id="@+id/action_search"
+        <item android:id="@+id/search"
               android:title="@string/map_option_search"
               android:icon="@drawable/ic_action_search"
               app:showAsAction="collapseActionView|ifRoom"
               app:actionViewClass="androidx.appcompat.widget.SearchView"/>
         <item android:id="@+id/recent_stops_routes"
               android:title="@string/my_recent_menu_title"/>
+        <item android:id="@+id/refresh"
+              android:title="Refresh"
+              android:icon="@drawable/ic_refresh_white_24dp"
+              app:showAsAction="never"/>
+        <item android:id="@+id/sort_arrivals"
+              android:title="Sort arrivals"
+              app:showAsAction="never"/>
+        <item android:id="@+id/filter"
+              android:title="Filter"
+              app:showAsAction="never"/>
+        <item android:id="@+id/legend"
+              android:title="Legend"
+              app:showAsAction="never"/>
+        <item android:id="@+id/test_widget_visibility"
+              android:title="Test Widget Visibility"
+              android:visible="false"
+              app:showAsAction="never"/>
     </group>
 </menu>

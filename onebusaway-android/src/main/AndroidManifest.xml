@@ -363,6 +363,43 @@
 
         <!-- Opt-out of June 2018 Android Maps styling with pin POI icons - see #891 -->
         <meta-data android:name="com.google.android.gms.maps.API_OPTIONS" android:value="B3H9HE845CFHYG"/>
+
+        <!-- Register the widget provider -->
+        <receiver android:name=".widget.FavoriteStopWidgetProvider" 
+                android:label="@string/app_name"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_ENABLED" />
+                <action android:name="android.appwidget.action.APPWIDGET_DELETED" />
+                <action android:name="android.appwidget.action.APPWIDGET_DISABLED" />
+                <action android:name="org.onebusaway.android.widget.ACTION_REFRESH" />
+                <action android:name="org.onebusaway.android.DEBUG_UPDATE_WIDGET" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="org.onebusaway.android.DATABASE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/favorite_stop_widget_info" />
+        </receiver>
+        
+        <!-- Widget stop selector activity -->
+        <activity
+            android:name=".widget.StopSelectorActivity"
+            android:label="@string/widget_select_stop"
+            android:theme="@style/WidgetPickerDialog"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
     </application>
 
     <uses-feature

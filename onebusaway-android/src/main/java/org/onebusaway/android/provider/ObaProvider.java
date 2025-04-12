@@ -23,6 +23,7 @@ import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.UriMatcher;
 import android.database.Cursor;
 import android.database.DatabaseUtils;
@@ -46,6 +47,8 @@ public class ObaProvider extends ContentProvider {
      * compatibility with existing installed apps
      */
     private static final String DATABASE_NAME = BuildConfig.APPLICATION_ID + ".db";
+
+    private static final String ACTION_DATABASE_CHANGED = "org.onebusaway.android.DATABASE_CHANGED";
 
     private class OpenHelper extends SQLiteOpenHelper {
 
@@ -700,11 +703,19 @@ public class ObaProvider extends ContentProvider {
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
+        if (uri == null) {
+            return null;
+        }
         final SQLiteDatabase db = getDatabase();
         db.beginTransaction();
         try {
             Uri result = insertInternal(db, uri, values);
-            getContext().getContentResolver().notifyChange(uri, null);
+            if (result != null) {
+                getContext().getContentResolver().notifyChange(uri, null);
+                if (shouldNotifyWidgetForUri(uri, values)) {
+                    notifyWidgets();
+                }
+            }
             db.setTransactionSuccessful();
             return result;
         } finally {
@@ -728,6 +739,9 @@ public class ObaProvider extends ContentProvider {
             int result = updateInternal(db, uri, values, selection, selectionArgs);
             if (result > 0) {
                 getContext().getContentResolver().notifyChange(uri, null);
+                if (shouldNotifyWidgetForUri(uri, values)) {
+                    notifyWidgets();
+                }
             }
             db.setTransactionSuccessful();
             return result;
@@ -744,6 +758,9 @@ public class ObaProvider extends ContentProvider {
             int result = deleteInternal(db, uri, selection, selectionArgs);
             if (result > 0) {
                 getContext().getContentResolver().notifyChange(uri, null);
+                if (shouldNotifyWidgetForUri(uri, null)) {
+                    notifyWidgets();
+                }
             }
             db.setTransactionSuccessful();
             return result;
@@ -1219,5 +1236,55 @@ public class ObaProvider extends ContentProvider {
     public void closeDB() {
         mOpenHelper.close();
         mDb = null;
+    }
+
+    /**
+     * Determines if the widget should be notified of changes to this URI
+     */
+    private boolean shouldNotifyWidgetForUri(Uri uri, ContentValues values) {
+        // Check if this affects starred stops or routes
+        int match = sUriMatcher.match(uri);
+        boolean isRelevant = false;
+        
+        switch (match) {
+            case STOPS:
+            case STOPS_ID:
+                // Check if this was a favorite flag change
+                isRelevant = values != null && values.containsKey(ObaContract.Stops.FAVORITE);
+                break;
+            case ROUTES:
+            case ROUTES_ID:
+                // Check if this was a favorite flag change
+                isRelevant = values != null && values.containsKey(ObaContract.Routes.FAVORITE);
+                break;
+            case STOP_ROUTE_FILTERS:
+                // Any changes to stop route filters could affect favorites
+                isRelevant = true;
+                break;
+            case ROUTE_HEADSIGN_FAVORITES:
+                // Any changes to route headsign favorites are relevant
+                isRelevant = true;
+                break;
+            default:
+                isRelevant = false;
+        }
+        
+        return isRelevant;
+    }
+
+    /**
+     * Sends a broadcast to notify widgets of data changes
+     */
+    private void notifyWidgets() {
+        try {
+            Context context = getContext();
+            if (context != null) {
+                Log.d(TAG, "Broadcasting database change notification for widget update");
+                Intent intent = new Intent(ACTION_DATABASE_CHANGED);
+                context.sendBroadcast(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error broadcasting widget update notification: " + e.getMessage(), e);
+        }
     }
 }

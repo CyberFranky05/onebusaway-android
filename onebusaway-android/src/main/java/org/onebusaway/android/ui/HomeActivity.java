@@ -833,25 +833,32 @@ public class HomeActivity extends AppCompatActivity
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_options, menu);
-
+        
         UIUtils.setupSearch(this, menu);
-
+        
         // Initialize fragment menu visibility here, so we don't have overlap between the various fragments
         setupOptionsMenu(menu);
-
+        
         return super.onCreateOptionsMenu(menu);
     }
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
         super.onPrepareOptionsMenu(menu);
-
+        
         // Manage fragment menu visibility here, so we don't have overlap between the various fragments
         setupOptionsMenu(menu);
-
+        
+        // Add the test widget option in debug mode
+        if (BuildConfig.DEBUG) {
+            menu.findItem(R.id.test_widget_visibility).setVisible(true);
+        } else {
+            menu.findItem(R.id.test_widget_visibility).setVisible(false);
+        }
+        
         return true;
     }
-
+    
     private void setupOptionsMenu(Menu menu) {
         menu.setGroupVisible(R.id.main_options_menu_group, true);
         menu.setGroupVisible(R.id.arrival_list_menu_group, mShowArrivalsMenu);
@@ -877,8 +884,31 @@ public class HomeActivity extends AppCompatActivity
             Intent myIntent = new Intent(this, MyRecentStopsAndRoutesActivity.class);
             startActivity(myIntent);
             return true;
+        } else if (id == R.id.test_widget_visibility) {
+            // Test the widget visibility
+            testWidgetVisibility();
+            return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+    
+    /**
+     * Tests widget visibility by calling the static test method
+     */
+    private void testWidgetVisibility() {
+        try {
+            // Import the widget provider class
+            Class<?> widgetProviderClass = Class.forName("org.onebusaway.android.widget.FavoriteStopWidgetProvider");
+            
+            // Call the static method to test widget visibility
+            java.lang.reflect.Method testMethod = widgetProviderClass.getMethod("testWidgetVisibility", Context.class);
+            testMethod.invoke(null, this);
+            
+            Toast.makeText(this, "Widget visibility test initiated", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e(TAG, "Error testing widget visibility: " + e.getMessage(), e);
+            Toast.makeText(this, "Widget test failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
