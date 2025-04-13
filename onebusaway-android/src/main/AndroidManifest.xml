@@ -361,6 +361,37 @@
                 android:value="org.onebusaway.android.ui.PreferencesActivity"/>
         </activity>
 
+        <!-- Widget Provider -->
+        <receiver android:name=".widget.FavoriteStopWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/favorite_stop_widget_info" />
+        </receiver>
+
+        <!-- Register StopSelectorActivity for the bottom sheet -->
+        <activity
+            android:name=".widget.FavoriteStopWidgetProvider$StopSelectorActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Dialog.Alert.Transparent"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="org.onebusaway.android.widget.ACTION_STOP_SELECTOR" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Service for widget arrivals data -->
+        <service
+            android:name=".widget.ArrivalsWidgetService"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Opt-out of June 2018 Android Maps styling with pin POI icons - see #891 -->
         <meta-data android:name="com.google.android.gms.maps.API_OPTIONS" android:value="B3H9HE845CFHYG"/>
     </application>
