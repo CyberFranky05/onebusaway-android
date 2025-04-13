@@ -85,34 +85,56 @@ public class WidgetArrivalViewBuilder {
                     etaText = TIME_FORMAT.format(new Date(eta));
                 }
                 
-                // Line 1: Route number and destination
-                arrivalsText.append("■ ").append(routeName).append(" → ");
-                // Truncate long destination names
-                if (headsign.length() > 20) {
-                    arrivalsText.append(headsign.substring(0, 17)).append("...");
-                } else {
-                    arrivalsText.append(headsign);
-                }
-                arrivalsText.append("\n");
+                // Format actual arrival time
+                String arrivalTimeText = TIME_FORMAT.format(new Date(eta));
                 
-                // Line 2: Arrival time with indent
-                arrivalsText.append("   ");
+                // Determine status text
+                String statusText;
                 if (isPredicted) {
-                    arrivalsText.append("Arriving in ").append(etaText);
+                    statusText = "Arriving in " + etaText;
                 } else {
-                    arrivalsText.append("Scheduled: ").append(etaText);
+                    statusText = "Scheduled: " + etaText;
                 }
                 
-                // Add spacing between entries
+                // Determine short route name + destination text (truncate if needed)
+                String destinationText = routeName + " → " + headsign;
+                if (destinationText.length() > 24) {
+                    destinationText = destinationText.substring(0, 21) + "...";
+                }
+                
+                // ROW 1: Route name (left) and ETA (right)
+                arrivalsText.append(destinationText);
+                
+                // Calculate padding for right-aligned ETA
+                int routeEtaPadding = Math.max(0, 34 - destinationText.length() - etaText.length());
+                for (int p = 0; p < routeEtaPadding; p++) {
+                    arrivalsText.append(" ");
+                }
+                arrivalsText.append(etaText).append("\n");
+                
+                // ROW 2: Status info (left) and arrival time (right)
+                arrivalsText.append(statusText);
+                
+                // Calculate padding for right-aligned arrival time
+                String arrivalText = "Arrives at " + arrivalTimeText;
+                int statusArrivalPadding = Math.max(0, 34 - statusText.length() - arrivalText.length());
+                for (int p = 0; p < statusArrivalPadding; p++) {
+                    arrivalsText.append(" ");
+                }
+                arrivalsText.append(arrivalText);
+                
+                // Add border between arrivals
                 if (i < displayCount - 1) {
-                    arrivalsText.append("\n\n");
+                    arrivalsText.append("\n");
+                    arrivalsText.append("_________________________________");
+                    arrivalsText.append("\n");
                 }
             }
         }
         
         // If we have more arrivals than we can display, add a note
         if (arrivals.length > displayCount) {
-            arrivalsText.append("\n\n").append(arrivals.length - displayCount)
+            arrivalsText.append("\n\n+ ").append(arrivals.length - displayCount)
                 .append(" more arrival").append(arrivals.length - displayCount > 1 ? "s" : "");
         }
         

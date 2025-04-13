@@ -72,7 +72,16 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         logWidgetSize(context, appWidgetManager, appWidgetId);
         
         // Update the widget with the new size
+        Log.d(TAG, "Widget " + appWidgetId + " size changed - updating layout");
         updateWidget(context, appWidgetManager, appWidgetId);
+        
+        // Also refresh arrivals data when widget is resized
+        String stopId = getStopIdForWidget(context, appWidgetId);
+        String stopName = getStopNameForWidget(context, appWidgetId);
+        if (stopId != null && stopName != null) {
+            Log.d(TAG, "Requesting arrivals refresh after resize");
+            ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+        }
     }
     
     @Override

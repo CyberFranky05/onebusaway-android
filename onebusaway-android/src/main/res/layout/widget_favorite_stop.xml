@@ -84,7 +84,9 @@
         android:layout_height="match_parent"
         android:layout_below="@id/direction"
         android:padding="8dp"
-        android:lineSpacingExtra="2dp"
+        android:lineSpacingExtra="4dp"
+        android:fontFamily="sans-serif"
+        android:textStyle="normal"
         android:background="@android:color/white"
         android:textColor="@android:color/black"
         android:textSize="14sp" />
