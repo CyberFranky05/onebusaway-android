@@ -47,11 +47,17 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_STOP_SELECTOR = "org.onebusaway.android.widget.ACTION_STOP_SELECTOR";
     public static final String ACTION_REFRESH_WIDGET = "org.onebusaway.android.widget.ACTION_REFRESH_WIDGET";
     private static final String ACTION_OPEN_SETTINGS = "org.onebusaway.android.widget.ACTION_OPEN_SETTINGS";
+    public static final String ACTION_AUTO_UPDATE = "org.onebusaway.android.widget.ACTION_AUTO_UPDATE";
     
     // Shared preferences for storing selected stops
-    private static final String PREFS_NAME = "org.onebusaway.android.widget.FavoriteStopWidgetProvider";
+    public static final String PREFS_NAME = "org.onebusaway.android.widget.FavoriteStopWidgetProvider";
     private static final String PREF_STOP_ID_PREFIX = "stop_id_";
     private static final String PREF_STOP_NAME_PREFIX = "stop_name_";
+    public static final String PREF_AUTO_REFRESH_PREFIX = "auto_refresh_";
+    public static final String PREF_REFRESH_INTERVAL_PREFIX = "refresh_interval_";
+    
+    // Default update interval (30 minutes)
+    private static final long DEFAULT_UPDATE_INTERVAL_MS = 30 * 60 * 1000;
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -185,7 +191,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_header, settingsPendingIntent);
 
         // Set up click intent for the stop selector
-        Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
+        Intent selectorIntent = new Intent(context, FavoriteStopWidgetProvider.StopSelectorActivity.class);
         selectorIntent.setAction(ACTION_STOP_SELECTOR);
         selectorIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
         PendingIntent selectorPendingIntent = PendingIntent.getActivity(context, appWidgetId, selectorIntent,
@@ -461,11 +467,11 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     }
     
     /**
-     * Start a proactive loading strategy with multiple retry attempts
+     * Start a proactive loading strategy with multiple retry attempts.
      * This ensures the widget loads data even if initial attempts fail
      */
     private void startProactiveLoading(Context context, String stopId, String stopName, int appWidgetId) {
-        // Create a background thread for loading
+        // Create a background thread for loading with exponential backoff
         new Thread(() -> {
             try {
                 // First attempt - immediate
@@ -474,16 +480,122 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 
                 // Wait and then do a second attempt after 3 seconds
                 Thread.sleep(3000);
+                
+                // Check if we already have the widget preferences
+                SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
+                String currentStopId = prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
+                
+                // If the stopId has changed or been removed, abort further retries
+                if (currentStopId == null || !currentStopId.equals(stopId)) {
+                    Log.d(TAG, "Stop ID changed or removed, aborting retry sequence");
+                    return;
+                }
+                
                 Log.d(TAG, "Second attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
                 
-                // Final attempt after 8 seconds
+                // Final attempt after another 5 seconds (8 seconds total)
                 Thread.sleep(5000);
+                
+                // Check again if the stopId is still valid
+                currentStopId = prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
+                if (currentStopId == null || !currentStopId.equals(stopId)) {
+                    Log.d(TAG, "Stop ID changed or removed, aborting final retry");
+                    return;
+                }
+                
                 Log.d(TAG, "Final attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                
+                // After all loading attempts, schedule periodic updates if enabled
+                scheduleWidgetUpdate(context, appWidgetId);
             } catch (InterruptedException e) {
                 Log.e(TAG, "Proactive loading interrupted", e);
+            } catch (Exception e) {
+                Log.e(TAG, "Error during proactive loading", e);
+                // Try one more time even if we hit an error
+                try {
+                    ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                    scheduleWidgetUpdate(context, appWidgetId);
+                } catch (Exception ex) {
+                    Log.e(TAG, "Final attempt failed", ex);
+                }
             }
         }).start();
+    }
+    
+    /**
+     * Schedule automatic updates for the widget if enabled
+     */
+    private void scheduleWidgetUpdate(Context context, int appWidgetId) {
+        // Check if auto-refresh is enabled for this widget
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
+        boolean autoRefresh = prefs.getBoolean(PREF_AUTO_REFRESH_PREFIX + appWidgetId, true);
+        
+        // Cancel any existing alarms
+        cancelWidgetUpdates(context, appWidgetId);
+        
+        if (autoRefresh) {
+            // Get refresh interval in minutes
+            int refreshIntervalMinutes = prefs.getInt(PREF_REFRESH_INTERVAL_PREFIX + appWidgetId, 30);
+            long refreshIntervalMs = refreshIntervalMinutes * 60 * 1000L;
+            
+            Log.d(TAG, "Scheduling widget " + appWidgetId + " updates every " + refreshIntervalMinutes + " minutes");
+            
+            // Create pending intent
+            Intent intent = new Intent(context, FavoriteStopWidgetProvider.class);
+            intent.setAction(ACTION_AUTO_UPDATE);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(context, appWidgetId, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            
+            // Schedule recurring alarm with recommended approach for different API levels
+            android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            long triggerTime = System.currentTimeMillis() + refreshIntervalMs;
+            
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    // For Android 12+, check if we can schedule exact alarms
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        // Use setExactAndAllowWhileIdle for more precise timing if allowed
+                        alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                        Log.d(TAG, "Set exact and allow idle alarm for widget " + appWidgetId);
+                    } else {
+                        // Fall back to setAndAllowWhileIdle
+                        alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                        Log.d(TAG, "Set and allow idle alarm for widget " + appWidgetId);
+                    }
+                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    // For Android 6+, use setExactAndAllowWhileIdle
+                    alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                    Log.d(TAG, "Set exact and allow idle alarm for widget " + appWidgetId);
+                } else {
+                    // For older versions, use setExact
+                    alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                    Log.d(TAG, "Set exact alarm for widget " + appWidgetId);
+                }
+            } catch (Exception e) {
+                // If any of the above fail, fall back to the most basic approach
+                Log.e(TAG, "Error setting preferred alarm type, falling back to basic alarm", e);
+                alarmManager.set(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                Log.d(TAG, "Set basic alarm for widget " + appWidgetId);
+            }
+        } else {
+            Log.d(TAG, "Auto-refresh disabled for widget " + appWidgetId);
+        }
+    }
+
+    /**
+     * Cancel any existing alarms for the widget
+     */
+    private void cancelWidgetUpdates(Context context, int appWidgetId) {
+        // Cancel any existing alarms
+        android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(context, FavoriteStopWidgetProvider.class);
+        intent.setAction(ACTION_AUTO_UPDATE);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(context, appWidgetId, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        alarmManager.cancel(pendingIntent);
     }
 } 

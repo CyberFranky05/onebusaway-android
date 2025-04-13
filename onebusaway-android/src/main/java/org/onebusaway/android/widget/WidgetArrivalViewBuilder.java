@@ -23,6 +23,7 @@ import android.widget.RemoteViews;
 
 import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
+import org.onebusaway.android.util.UIUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -49,7 +50,6 @@ public class WidgetArrivalViewBuilder {
             return "No upcoming arrivals at this time.";
         }
         
-        // Build arrival text, limiting to maxArrivals
         StringBuilder arrivalsText = new StringBuilder();
         int displayCount = Math.min(arrivals.length, maxArrivals);
         
@@ -85,49 +85,26 @@ public class WidgetArrivalViewBuilder {
                     etaText = TIME_FORMAT.format(new Date(eta));
                 }
                 
-                // Format actual arrival time
+                // Format arrival time for better readability
                 String arrivalTimeText = TIME_FORMAT.format(new Date(eta));
                 
-                // Determine status text
-                String statusText;
-                if (isPredicted) {
-                    statusText = "Arriving in " + etaText;
-                } else {
-                    statusText = "Scheduled: " + etaText;
-                }
+                // Get status text with appropriate formatting
+                String statusText = isPredicted ? "Est: " + etaText : "Sched: " + etaText;
                 
-                // Determine short route name + destination text (truncate if needed)
+                // Format arrival time for the full row
                 String destinationText = routeName + " → " + headsign;
-                if (destinationText.length() > 24) {
-                    destinationText = destinationText.substring(0, 21) + "...";
+                if (destinationText.length() > 28) {
+                    // Truncate if too long
+                    destinationText = destinationText.substring(0, 25) + "...";
                 }
                 
-                // ROW 1: Route name (left) and ETA (right)
-                arrivalsText.append(destinationText);
+                // Add route and ETA
+                arrivalsText.append(destinationText).append("\n");
+                arrivalsText.append(statusText).append(" (").append(arrivalTimeText).append(")");
                 
-                // Calculate padding for right-aligned ETA
-                int routeEtaPadding = Math.max(0, 34 - destinationText.length() - etaText.length());
-                for (int p = 0; p < routeEtaPadding; p++) {
-                    arrivalsText.append(" ");
-                }
-                arrivalsText.append(etaText).append("\n");
-                
-                // ROW 2: Status info (left) and arrival time (right)
-                arrivalsText.append(statusText);
-                
-                // Calculate padding for right-aligned arrival time
-                String arrivalText = "Arrives at " + arrivalTimeText;
-                int statusArrivalPadding = Math.max(0, 34 - statusText.length() - arrivalText.length());
-                for (int p = 0; p < statusArrivalPadding; p++) {
-                    arrivalsText.append(" ");
-                }
-                arrivalsText.append(arrivalText);
-                
-                // Add border between arrivals
+                // Add divider between arrivals
                 if (i < displayCount - 1) {
-                    arrivalsText.append("\n");
-                    arrivalsText.append("_________________________________");
-                    arrivalsText.append("\n");
+                    arrivalsText.append("\n\n");
                 }
             }
         }
@@ -152,7 +129,7 @@ public class WidgetArrivalViewBuilder {
     public static void updateArrivalsInWidget(RemoteViews views, Context context, ObaArrivalInfo[] arrivals, int maxArrivals) {
         if (arrivals == null || arrivals.length == 0) {
             // Show no arrivals message
-            views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time");
+            views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time.");
             return;
         }
 

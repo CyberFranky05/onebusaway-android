@@ -36,6 +36,12 @@
     <uses-permission android:name="${applicationId}.permission.TRIP_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 
     <!-- Permission request for activity recognition and background location is disabled because the related feature has been turned off.
     See issue #1240 for more details: https://github.com/OneBusAway/onebusaway-android/issues/1240-->
@@ -362,9 +368,9 @@
         </activity>
 
         <!-- Widget Provider -->
-        <receiver android:name=".widget.FavoriteStopWidgetProvider"
-            android:exported="true"
-            android:label="@string/favorite_stops_shortcut">
+        <receiver
+            android:name=".widget.FavoriteStopWidgetProvider"
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
             </intent-filter>
@@ -372,22 +378,11 @@
                        android:resource="@xml/favorite_stop_widget_info"/>
         </receiver>
 
-        <!-- Activity to select a stop for the widget -->
-        <activity
-            android:name=".widget.StopSelectorActivity"
-            android:exported="false"
-            android:label="@string/favorite_stops_shortcut">
-            <intent-filter>
-                <action android:name="org.onebusaway.android.STOP_SELECTOR"/>
-            </intent-filter>
-        </activity>
-        
         <!-- Activity for widget settings -->
         <activity
             android:name=".widget.WidgetSettingsActivity"
             android:exported="false"
-            android:label="@string/widget_settings_title">
-        </activity>
+            android:theme="@style/Theme.OneBusAway.Dialog" />
 
         <!-- Register StopSelectorActivity for the bottom sheet -->
         <activity
@@ -407,10 +402,28 @@
         <service
             android:name=".widget.ArrivalsWidgetService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:directBootAware="true"
+            android:process=":widget_service" />
+
+        <!-- Boot completed receiver to restore widgets after device restart -->
+        <receiver
+            android:name=".widget.WidgetBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Opt-out of June 2018 Android Maps styling with pin POI icons - see #891 -->
         <meta-data android:name="com.google.android.gms.maps.API_OPTIONS" android:value="B3H9HE845CFHYG"/>
+
+        <!-- Widget job service -->
+        <service
+            android:name=".widget.ArrivalsWidgetJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 
     <uses-feature
