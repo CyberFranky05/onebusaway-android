@@ -16,6 +16,7 @@
 package org.onebusaway.android.widget;
 
 import android.app.IntentService;
+import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.Intent;
@@ -79,12 +80,15 @@ public class ArrivalsWidgetService extends IntentService {
         // Show loading indicator
         views.setTextViewText(R.id.stop_name, stopName != null ? stopName : "Loading...");
         views.setTextViewText(R.id.direction, "Loading arrivals data...");
-        views.setTextViewText(R.id.no_arrivals, "DEBUG: Loading for stop ID: " + stopId);
+        views.setTextViewText(R.id.no_arrivals, "Checking for arrivals at stop " + stopId);
         appWidgetManager.updateAppWidget(widgetId, views);
         
         Log.d(TAG, "Loading screen set for widget");
 
         try {
+            // Ensure Application is initialized
+            initializeAppIfNeeded();
+            
             // Fetch arrival data using ObaArrivalInfoRequest
             Log.d(TAG, "Creating request for stop ID: " + stopId);
             ObaArrivalInfoRequest request = ObaArrivalInfoRequest.newRequest(this, stopId);
@@ -94,8 +98,9 @@ public class ArrivalsWidgetService extends IntentService {
 
             if (response == null) {
                 Log.e(TAG, "Response is null");
-                views.setTextViewText(R.id.direction, "ERROR: Null response");
-                views.setTextViewText(R.id.no_arrivals, "DEBUG: API returned null response for stop ID: " + stopId);
+                views.setTextViewText(R.id.direction, "Error: No response");
+                views.setTextViewText(R.id.no_arrivals, "Unable to get arrivals.\nPlease try again.");
+                setRetryRefreshButton(views, stopId, stopName, widgetId);
                 appWidgetManager.updateAppWidget(widgetId, views);
                 return;
             }
@@ -105,8 +110,9 @@ public class ArrivalsWidgetService extends IntentService {
             if (response.getCode() != ObaApi.OBA_OK) {
                 // Handle error
                 Log.e(TAG, "Error response code: " + response.getCode());
-                views.setTextViewText(R.id.direction, "Error " + response.getCode());
-                views.setTextViewText(R.id.no_arrivals, "DEBUG: API error for stop ID: " + stopId + "\nCode: " + response.getCode());
+                views.setTextViewText(R.id.direction, "Error getting arrivals");
+                views.setTextViewText(R.id.no_arrivals, "Unable to get arrivals.\nPlease check your connection and try again.");
+                setRetryRefreshButton(views, stopId, stopName, widgetId);
                 appWidgetManager.updateAppWidget(widgetId, views);
                 return;
             }
@@ -115,8 +121,9 @@ public class ArrivalsWidgetService extends IntentService {
             ObaStop stop = response.getStop();
             if (stop == null) {
                 Log.e(TAG, "Stop information is null");
-                views.setTextViewText(R.id.direction, "ERROR: No stop info");
-                views.setTextViewText(R.id.no_arrivals, "DEBUG: No stop information returned for ID: " + stopId);
+                views.setTextViewText(R.id.direction, "Error: Stop not found");
+                views.setTextViewText(R.id.no_arrivals, "Could not find information for stop " + stopId);
+                setRetryRefreshButton(views, stopId, stopName, widgetId);
                 appWidgetManager.updateAppWidget(widgetId, views);
                 return;
             }
@@ -153,6 +160,9 @@ public class ArrivalsWidgetService extends IntentService {
                 views.setTextViewText(R.id.no_arrivals, "Error displaying arrivals. Please try again.");
             }
             
+            // Restore refresh button functionality
+            setRetryRefreshButton(views, stopId, stopName, widgetId);
+            
             // Update widget with the new views
             try {
                 appWidgetManager.updateAppWidget(widgetId, views);
@@ -163,10 +173,50 @@ public class ArrivalsWidgetService extends IntentService {
 
         } catch (Exception e) {
             Log.e(TAG, "Error fetching arrivals", e);
-            views.setTextViewText(R.id.direction, "Error: " + e.getClass().getSimpleName());
-            views.setTextViewText(R.id.no_arrivals, "DEBUG EXCEPTION: " + e.getMessage() + "\nFor stop ID: " + stopId);
+            views.setTextViewText(R.id.direction, "Error getting arrivals");
+            views.setTextViewText(R.id.no_arrivals, "An error occurred while getting arrivals.\nPlease try again.");
+            setRetryRefreshButton(views, stopId, stopName, widgetId);
             appWidgetManager.updateAppWidget(widgetId, views);
         }
+    }
+    
+    /**
+     * Make sure the Application class is initialized properly
+     */
+    private void initializeAppIfNeeded() {
+        try {
+            // Ensure OBA API is initialized
+            Application app = Application.get();
+            if (app != null) {
+                Log.d(TAG, "Application already initialized");
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "Initializing application from widget service");
+            try {
+                // Initialize application manually
+                Application app = Application.get();
+                if (app != null) {
+                    // App already initialized
+                    Log.d(TAG, "Application already initialized");
+                } else {
+                    Log.e(TAG, "Could not initialize application");
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Error initializing application from widget service", ex);
+            }
+        }
+    }
+    
+    /**
+     * Set up the refresh button to retry loading arrivals
+     */
+    private void setRetryRefreshButton(RemoteViews views, String stopId, String stopName, int widgetId) {
+        Intent refreshIntent = new Intent(this, FavoriteStopWidgetProvider.class);
+        refreshIntent.setAction(FavoriteStopWidgetProvider.ACTION_REFRESH_WIDGET);
+        refreshIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+        PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(this, widgetId + 2000, refreshIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
     }
 
     /**

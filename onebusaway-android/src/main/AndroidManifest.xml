@@ -363,14 +363,31 @@
 
         <!-- Widget Provider -->
         <receiver android:name=".widget.FavoriteStopWidgetProvider"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/favorite_stops_shortcut">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
             </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/favorite_stop_widget_info" />
+            <meta-data android:name="android.appwidget.provider"
+                       android:resource="@xml/favorite_stop_widget_info"/>
         </receiver>
+
+        <!-- Activity to select a stop for the widget -->
+        <activity
+            android:name=".widget.StopSelectorActivity"
+            android:exported="false"
+            android:label="@string/favorite_stops_shortcut">
+            <intent-filter>
+                <action android:name="org.onebusaway.android.STOP_SELECTOR"/>
+            </intent-filter>
+        </activity>
+        
+        <!-- Activity for widget settings -->
+        <activity
+            android:name=".widget.WidgetSettingsActivity"
+            android:exported="false"
+            android:label="@string/widget_settings_title">
+        </activity>
 
         <!-- Register StopSelectorActivity for the bottom sheet -->
         <activity

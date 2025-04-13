@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget -->
+    <string name="widget_title">Favorite Stop</string>
+    <string name="widget_settings_no_stop">No stop selected</string>
+    <string name="favorite_stops_shortcut">Favorite Stops</string>
+</resources> 

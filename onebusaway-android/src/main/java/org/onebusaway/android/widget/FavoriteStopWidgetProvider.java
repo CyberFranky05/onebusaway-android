@@ -44,8 +44,9 @@ import java.util.List;
  */
 public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     private static final String TAG = "FavoriteStopWidget";
-    private static final String ACTION_STOP_SELECTOR = "org.onebusaway.android.widget.ACTION_STOP_SELECTOR";
-    private static final String ACTION_REFRESH_WIDGET = "org.onebusaway.android.widget.ACTION_REFRESH_WIDGET";
+    public static final String ACTION_STOP_SELECTOR = "org.onebusaway.android.widget.ACTION_STOP_SELECTOR";
+    public static final String ACTION_REFRESH_WIDGET = "org.onebusaway.android.widget.ACTION_REFRESH_WIDGET";
+    private static final String ACTION_OPEN_SETTINGS = "org.onebusaway.android.widget.ACTION_OPEN_SETTINGS";
     
     // Shared preferences for storing selected stops
     private static final String PREFS_NAME = "org.onebusaway.android.widget.FavoriteStopWidgetProvider";
@@ -54,12 +55,33 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        // Ensure the Application class is initialized
+        initializeAppIfNeeded(context);
+        
         // Update each widget
         for (int appWidgetId : appWidgetIds) {
             // Log widget size information
             logWidgetSize(context, appWidgetManager, appWidgetId);
             
+            // Update the widget UI immediately
             updateWidget(context, appWidgetManager, appWidgetId);
+        }
+    }
+    
+    /**
+     * Make sure the Application class is initialized properly
+     */
+    private void initializeAppIfNeeded(Context context) {
+        try {
+            // Ensure OBA API is initialized
+            org.onebusaway.android.app.Application app = org.onebusaway.android.app.Application.get();
+            if (app != null) {
+                Log.d(TAG, "Application already initialized");
+            } else {
+                Log.e(TAG, "Could not get Application instance");
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "Error checking application state", e);
         }
     }
     
@@ -86,6 +108,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Ensure the Application class is initialized
+        initializeAppIfNeeded(context);
+        
         super.onReceive(context, intent);
         
         // Handle refresh action
@@ -103,6 +128,12 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.d(TAG, "Retrieved saved stop ID: " + stopId + ", name: " + stopName);
                 
                 if (stopId != null) {
+                    // Update display to show loading state first
+                    AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+                    RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
+                    views.setTextViewText(R.id.direction, "Loading arrivals...");
+                    appWidgetManager.updateAppWidget(appWidgetId, views);
+                    
                     // Request arrivals update
                     Log.d(TAG, "Requesting arrivals update");
                     ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
@@ -114,6 +145,19 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 }
             } else {
                 Log.e(TAG, "Invalid widget ID in refresh action");
+            }
+        } else if (ACTION_OPEN_SETTINGS.equals(intent.getAction())) {
+            int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                    AppWidgetManager.INVALID_APPWIDGET_ID);
+            
+            Log.d(TAG, "Received settings action for widget ID: " + appWidgetId);
+            
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                // Open the settings activity
+                Intent settingsIntent = new Intent(context, WidgetSettingsActivity.class);
+                settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                settingsIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+                context.startActivity(settingsIntent);
             }
         }
     }
@@ -131,6 +175,15 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_layout, appPendingIntent);
 
+        // Set up settings intent (using header area)
+        Intent settingsIntent = new Intent(context, FavoriteStopWidgetProvider.class);
+        settingsIntent.setAction(ACTION_OPEN_SETTINGS);
+        settingsIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        PendingIntent settingsPendingIntent = PendingIntent.getBroadcast(context, appWidgetId + 1000, settingsIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        // Use the widget header for settings
+        views.setOnClickPendingIntent(R.id.widget_header, settingsPendingIntent);
+
         // Set up click intent for the stop selector
         Intent selectorIntent = new Intent(context, StopSelectorActivity.class);
         selectorIntent.setAction(ACTION_STOP_SELECTOR);
@@ -139,11 +192,11 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.stop_selector, selectorPendingIntent);
         
-        // Set up refresh click intent
+        // Set up refresh click intent with unique requestCode
         Intent refreshIntent = new Intent(context, FavoriteStopWidgetProvider.class);
         refreshIntent.setAction(ACTION_REFRESH_WIDGET);
         refreshIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
-        PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, appWidgetId, refreshIntent,
+        PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, appWidgetId + 2000, refreshIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
 
@@ -156,46 +209,60 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         if (stopId != null) {
             // We have a saved stop, update the widget with that stop's data
             views.setTextViewText(R.id.stop_name, stopName != null ? stopName : "Loading...");
-            views.setTextViewText(R.id.direction, "DEBUG: Setting up widget for stop ID: " + stopId);
-            views.setTextViewText(R.id.no_arrivals, "Widget initialized. Tap refresh to load data.");
+            views.setTextViewText(R.id.direction, "Loading arrivals...");
+            views.setTextViewText(R.id.no_arrivals, "Please wait while we fetch data...");
+            
+            // Update the widget UI immediately
             appWidgetManager.updateAppWidget(appWidgetId, views);
             
             Log.d(TAG, "Widget UI updated with saved stop, requesting arrivals");
             
-            // Request arrivals update
-            ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+            // Start a proactive loading strategy with multiple retries if needed
+            startProactiveLoading(context, stopId, stopName, appWidgetId);
         } else {
             // No saved stop, get the most frequently used favorite stop
             Log.d(TAG, "No saved stop, looking for most frequent stop");
-            FavoriteStop favoriteStop = FavoriteStopManager.getMostFrequentStop(context);
-
-            if (favoriteStop != null) {
-                // Display the favorite stop information
-                Log.d(TAG, "Found most frequent stop: " + favoriteStop.getStopName() + " (ID: " + favoriteStop.getStopId() + ")");
-                views.setTextViewText(R.id.stop_name, favoriteStop.getStopName());
-                views.setTextViewText(R.id.direction, "DEBUG: Using most frequent stop");
-                views.setTextViewText(R.id.no_arrivals, "Using stop ID: " + favoriteStop.getStopId() + "\nTap refresh to load data");
+            
+            // Show loading state
+            views.setTextViewText(R.id.stop_name, "OneBusAway");
+            views.setTextViewText(R.id.direction, "Initializing widget...");
+            views.setTextViewText(R.id.no_arrivals, "Finding your favorite stops...");
+            appWidgetManager.updateAppWidget(appWidgetId, views);
+            
+            // Run in a separate thread to avoid blocking
+            new Thread(() -> {
+                // Try to find a favorite stop
+                FavoriteStop favoriteStop = FavoriteStopManager.getMostFrequentStop(context);
                 
-                // Save this stop for the widget
-                Log.d(TAG, "Saving most frequent stop for widget");
-                saveStopForWidget(context, appWidgetId, favoriteStop.getStopId(), favoriteStop.getStopName());
-                
-                // Update the widget
-                appWidgetManager.updateAppWidget(appWidgetId, views);
-                
-                // Request arrivals update
-                Log.d(TAG, "Requesting arrivals for most frequent stop");
-                ArrivalsWidgetService.requestUpdate(context, favoriteStop.getStopId(), favoriteStop.getStopName(), appWidgetId);
-            } else {
-                // No favorite stops - display default message
-                Log.d(TAG, "No favorite stops found");
-                views.setTextViewText(R.id.stop_name, "OneBusAway");
-                views.setTextViewText(R.id.direction, "DEBUG: No favorite stops");
-                views.setTextViewText(R.id.no_arrivals, "No favorite stops found. Add stops in the app first.");
-                
-                // Update the widget
-                appWidgetManager.updateAppWidget(appWidgetId, views);
-            }
+                if (favoriteStop != null) {
+                    // Display the favorite stop information
+                    Log.d(TAG, "Found most frequent stop: " + favoriteStop.getStopName() + " (ID: " + favoriteStop.getStopId() + ")");
+                    
+                    // Save this stop for the widget right away
+                    Log.d(TAG, "Saving most frequent stop for widget");
+                    saveStopForWidget(context, appWidgetId, favoriteStop.getStopId(), favoriteStop.getStopName());
+                    
+                    // Update views with stop info
+                    views.setTextViewText(R.id.stop_name, favoriteStop.getStopName());
+                    views.setTextViewText(R.id.direction, "Loading arrivals...");
+                    views.setTextViewText(R.id.no_arrivals, "Please wait while we fetch data...");
+                    
+                    // Update the widget right away
+                    appWidgetManager.updateAppWidget(appWidgetId, views);
+                    
+                    // Start a proactive loading strategy with multiple retries
+                    startProactiveLoading(context, favoriteStop.getStopId(), favoriteStop.getStopName(), appWidgetId);
+                } else {
+                    // No favorite stops - display default message
+                    Log.d(TAG, "No favorite stops found");
+                    views.setTextViewText(R.id.stop_name, "OneBusAway");
+                    views.setTextViewText(R.id.direction, "No favorite stops");
+                    views.setTextViewText(R.id.no_arrivals, "No favorite stops found.\nAdd stops in the app first, then tap on a stop to activate the widget.");
+                    
+                    // Update the widget
+                    appWidgetManager.updateAppWidget(appWidgetId, views);
+                }
+            }).start();
         }
     }
 
@@ -203,6 +270,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public void onEnabled(Context context) {
         // Called when first widget is created
         super.onEnabled(context);
+        
+        // Ensure the Application is initialized when widget is first created
+        initializeAppIfNeeded(context);
     }
 
     @Override
@@ -228,17 +298,22 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     /**
      * Save the selected stop for this widget
      */
-    private static void saveStopForWidget(Context context, int appWidgetId, String stopId, String stopName) {
+    public static void saveStopForWidget(Context context, int appWidgetId, String stopId, String stopName) {
         SharedPreferences.Editor prefs = context.getSharedPreferences(PREFS_NAME, 0).edit();
         prefs.putString(PREF_STOP_ID_PREFIX + appWidgetId, stopId);
         prefs.putString(PREF_STOP_NAME_PREFIX + appWidgetId, stopName);
         prefs.apply();
+        
+        // Update the widget to reflect the changes
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+        FavoriteStopWidgetProvider provider = new FavoriteStopWidgetProvider();
+        provider.updateWidget(context, appWidgetManager, appWidgetId);
     }
     
     /**
      * Get the saved stop ID for this widget
      */
-    private static String getStopIdForWidget(Context context, int appWidgetId) {
+    public static String getStopIdForWidget(Context context, int appWidgetId) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
         return prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
     }
@@ -246,7 +321,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     /**
      * Get the saved stop name for this widget
      */
-    private static String getStopNameForWidget(Context context, int appWidgetId) {
+    public static String getStopNameForWidget(Context context, int appWidgetId) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
         return prefs.getString(PREF_STOP_NAME_PREFIX + appWidgetId, null);
     }
@@ -383,5 +458,32 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         } else {
             Log.d(TAG, "Widget ID " + appWidgetId + ": Unable to get size information");
         }
+    }
+    
+    /**
+     * Start a proactive loading strategy with multiple retry attempts
+     * This ensures the widget loads data even if initial attempts fail
+     */
+    private void startProactiveLoading(Context context, String stopId, String stopName, int appWidgetId) {
+        // Create a background thread for loading
+        new Thread(() -> {
+            try {
+                // First attempt - immediate
+                Log.d(TAG, "First attempt to load arrivals data");
+                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                
+                // Wait and then do a second attempt after 3 seconds
+                Thread.sleep(3000);
+                Log.d(TAG, "Second attempt to load arrivals data");
+                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                
+                // Final attempt after 8 seconds
+                Thread.sleep(5000);
+                Log.d(TAG, "Final attempt to load arrivals data");
+                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Proactive loading interrupted", e);
+            }
+        }).start();
     }
 } 
