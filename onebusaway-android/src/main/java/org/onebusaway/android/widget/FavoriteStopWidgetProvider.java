@@ -21,6 +21,7 @@ import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -55,8 +56,23 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         // Update each widget
         for (int appWidgetId : appWidgetIds) {
+            // Log widget size information
+            logWidgetSize(context, appWidgetManager, appWidgetId);
+            
             updateWidget(context, appWidgetManager, appWidgetId);
         }
+    }
+    
+    @Override
+    public void onAppWidgetOptionsChanged(Context context, AppWidgetManager appWidgetManager, 
+            int appWidgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions);
+        
+        // Log the new widget size
+        logWidgetSize(context, appWidgetManager, appWidgetId);
+        
+        // Update the widget with the new size
+        updateWidget(context, appWidgetManager, appWidgetId);
     }
     
     @Override
@@ -324,6 +340,39 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             // Close the activity
             Log.d(TAG, "Finishing activity after selection");
             finish();
+        }
+    }
+
+    /**
+     * Log the current size of the widget
+     */
+    private void logWidgetSize(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
+        Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
+        if (options != null) {
+            // Portrait mode dimensions
+            int minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+            int maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+            
+            // Landscape mode dimensions
+            int maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0);
+            int minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+            
+            Log.d(TAG, "Widget ID " + appWidgetId + " size (dp):");
+            Log.d(TAG, "  Portrait: " + minWidth + " x " + maxHeight);
+            Log.d(TAG, "  Landscape: " + maxWidth + " x " + minHeight);
+            
+            // Calculate number of cells (approximation)
+            int cellWidth = minWidth / 70 + 1; // 70dp is approximately a cell width
+            int cellHeight = minHeight / 70 + 1; // 70dp is approximately a cell height
+            
+            Log.d(TAG, "  Approximate cell size: " + cellWidth + " x " + cellHeight + " cells");
+            
+            // Get actual device screen density for pixel calculation
+            float density = context.getResources().getDisplayMetrics().density;
+            Log.d(TAG, "  Screen density: " + density);
+            Log.d(TAG, "  Size in pixels: " + Math.round(minWidth * density) + " x " + Math.round(minHeight * density));
+        } else {
+            Log.d(TAG, "Widget ID " + appWidgetId + ": Unable to get size information");
         }
     }
 } 

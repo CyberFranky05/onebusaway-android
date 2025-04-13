@@ -32,6 +32,7 @@ import org.onebusaway.android.io.elements.ObaStop;
 import org.onebusaway.android.io.request.ObaArrivalInfoRequest;
 import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
 import org.onebusaway.android.util.UIUtils;
+import org.onebusaway.android.widget.WidgetArrivalViewBuilder;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -122,65 +123,43 @@ public class ArrivalsWidgetService extends IntentService {
             
             Log.d(TAG, "Stop info: " + stop.getName() + " (ID: " + stop.getId() + ")");
             
+            // Get arrivals information
             ObaArrivalInfo[] arrivals = response.getArrivalInfo();
-            if (arrivals == null) {
-                Log.e(TAG, "Arrivals array is null");
-                views.setTextViewText(R.id.direction, "ERROR: Null arrivals");
-                views.setTextViewText(R.id.no_arrivals, "DEBUG: Null arrivals array for stop: " + stop.getName());
-                appWidgetManager.updateAppWidget(widgetId, views);
-                return;
-            }
+            int arrivalsCount = arrivals != null ? arrivals.length : 0;
+            Log.d(TAG, "Arrivals count: " + arrivalsCount);
             
-            Log.d(TAG, "Arrivals count: " + arrivals.length);
-
-            // Check if we have arrivals
-            if (arrivals.length == 0) {
-                Log.d(TAG, "No arrivals found");
-                views.setTextViewText(R.id.stop_name, stopName != null ? stopName : stop.getName());
-                views.setTextViewText(R.id.direction, "No arrivals found");
-                views.setTextViewText(R.id.no_arrivals, "DEBUG: No upcoming arrivals for stop: " + stop.getName());
-                appWidgetManager.updateAppWidget(widgetId, views);
-                return;
-            }
-
-            // Format basic debug text with arrival info
-            StringBuilder debugText = new StringBuilder();
-            debugText.append("DEBUG: Stop ID: ").append(stopId).append("\n");
-            debugText.append("Stop name: ").append(stop.getName()).append("\n");
-            debugText.append("Found ").append(arrivals.length).append(" arrivals\n\n");
-            
-            // Add first 3 arrivals as simple text
-            int count = Math.min(arrivals.length, 3);
-            for (int i = 0; i < count; i++) {
-                ObaArrivalInfo arrival = arrivals[i];
-                debugText.append("Route: ").append(arrival.getShortName()).append("\n");
-                debugText.append("To: ").append(arrival.getHeadsign()).append("\n");
-                
-                // Simple time calculation
-                long eta = arrival.getPredictedArrivalTime();
-                if (eta == 0) {
-                    eta = arrival.getScheduledArrivalTime();
-                }
-                
-                long now = System.currentTimeMillis();
-                long minutes = (eta - now) / 60000;
-                
-                debugText.append("ETA: ");
-                if (minutes <= 0) {
-                    debugText.append("now");
-                } else {
-                    debugText.append(minutes).append(" min");
-                }
-                debugText.append("\n\n");
-            }
-
             // Update the widget with simple text data
             Log.d(TAG, "Updating widget with arrival data");
+            
+            // Set the stop name
             views.setTextViewText(R.id.stop_name, stopName != null ? stopName : stop.getName());
-            views.setTextViewText(R.id.direction, "Arrivals for stop: " + stop.getName());
-            views.setTextViewText(R.id.no_arrivals, debugText.toString());
-            appWidgetManager.updateAppWidget(widgetId, views);
-            Log.d(TAG, "Widget updated successfully");
+            
+            // Direction info - keep it short to fit on one line
+            views.setTextViewText(R.id.direction, stop.getDirection() != null ? 
+                    stop.getDirection() : "Arrivals for stop #" + stop.getStopCode());
+            
+            try {
+                if (arrivalsCount == 0) {
+                    // No arrivals - show message
+                    views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time.");
+                } else {
+                    // Use the WidgetArrivalViewBuilder to format the arrivals as text
+                    String arrivalsText = WidgetArrivalViewBuilder.formatArrivalsAsText(this, arrivals, 4);
+                    views.setTextViewText(R.id.no_arrivals, arrivalsText);
+                    Log.d(TAG, "Set arrival text for " + arrivalsCount + " arrivals");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting up arrival text", e);
+                views.setTextViewText(R.id.no_arrivals, "Error displaying arrivals. Please try again.");
+            }
+            
+            // Update widget with the new views
+            try {
+                appWidgetManager.updateAppWidget(widgetId, views);
+                Log.d(TAG, "Widget updated successfully with arrival text");
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating widget", e);
+            }
 
         } catch (Exception e) {
             Log.e(TAG, "Error fetching arrivals", e);

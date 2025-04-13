@@ -2,35 +2,35 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_layout"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="0dp">
+    android:padding="1dp">
 
     <!-- Header section -->
-    <RelativeLayout
+    <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/widget_header_background"
-        android:padding="8dp">
+        android:padding="8dp"
+        android:orientation="horizontal">
 
         <ImageView
             android:id="@+id/app_icon"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
+            android:layout_gravity="center_vertical"
             android:src="@mipmap/ic_launcher" />
 
-        <!-- Stop name and dropdown container -->
+        <!-- Stop name with dropdown -->
         <LinearLayout
             android:id="@+id/stop_selector"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:layout_centerVertical="true"
+            android:layout_gravity="center_vertical"
             android:layout_marginStart="8dp"
-            android:layout_toEndOf="@id/app_icon"
-            android:layout_toStartOf="@+id/widget_refresh"
+            android:layout_marginEnd="8dp"
             android:orientation="horizontal"
             android:clickable="true"
             android:focusable="true">
@@ -47,50 +47,46 @@
 
             <ImageView
                 android:id="@+id/dropdown_arrow"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
                 android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical"
                 android:src="@drawable/ic_dropdown_arrow" />
         </LinearLayout>
 
+        <!-- Refresh button -->
         <ImageView
             android:id="@+id/widget_refresh"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
+            android:layout_gravity="center_vertical"
             android:src="@drawable/ic_refresh_white_24dp" />
-    </RelativeLayout>
+    </LinearLayout>
 
-    <!-- Status section -->
+    <!-- Direction/Status bar -->
     <TextView
         android:id="@+id/direction"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/widget_header"
-        android:padding="8dp"
+        android:padding="4dp"
         android:gravity="center_vertical"
         android:background="#F5F5F5"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="#757575"
+        android:textSize="12sp"
+        android:ellipsize="end"
+        android:maxLines="1" />
+
+    <!-- Arrivals display -->
+    <TextView
+        android:id="@+id/no_arrivals"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/direction"
+        android:padding="8dp"
+        android:lineSpacingExtra="2dp"
+        android:background="@android:color/white"
+        android:textColor="@android:color/black"
         android:textSize="14sp" />
 
-    <!-- Arrivals container - styled to match app -->
-    <LinearLayout
-        android:id="@+id/arrivals_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/direction"
-        android:orientation="vertical"
-        android:background="@color/stop_info_arrival_list_background">
-
-        <!-- This is where arrivals will be added programmatically -->
-        <TextView
-            android:id="@+id/no_arrivals"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="16dp"
-            android:gravity="center"
-            android:textColor="@android:color/black"
-            android:textSize="14sp" />
-    </LinearLayout>
 </RelativeLayout> 
