@@ -345,6 +345,19 @@ public final class ObaArrivalInfo implements Serializable{
      * @return the predicted occupancy of the vehicle when it arrives at this stop, or null if the occupancy is unknown
      */
     public Occupancy getOccupancyStatus() {
+        if (occupancyStatus == null || occupancyStatus.isEmpty()) {
+            return null;
+        }
         return Occupancy.fromString(occupancyStatus);
+    }
+
+    /**
+     * Returns the route color to use for this arrival's route
+     *
+     * @return the integer representation of the route color, or 0 if not available
+     */
+    public int getRouteColor() {
+        // Default implementation returns 0, which will cause the app to use a default color
+        return 0;
     }
 }

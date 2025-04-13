@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/widget_background"
-    android:padding="8dp">
+    android:padding="0dp">
 
     <!-- Header section -->
     <RelativeLayout
@@ -62,23 +62,35 @@
             android:src="@drawable/ic_refresh_white_24dp" />
     </RelativeLayout>
 
-    <!-- Content section - simplified for debugging -->
+    <!-- Status section -->
     <TextView
         android:id="@+id/direction"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/widget_header"
         android:padding="8dp"
+        android:gravity="center_vertical"
+        android:background="#F5F5F5"
         android:textColor="@android:color/darker_gray"
         android:textSize="14sp" />
 
-    <TextView
-        android:id="@+id/no_arrivals"
+    <!-- Arrivals container - styled to match app -->
+    <LinearLayout
+        android:id="@+id/arrivals_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/direction"
-        android:padding="8dp"
-        android:textColor="@android:color/black"
-        android:textSize="14sp" />
+        android:orientation="vertical"
+        android:background="@color/stop_info_arrival_list_background">
 
+        <!-- This is where arrivals will be added programmatically -->
+        <TextView
+            android:id="@+id/no_arrivals"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:gravity="center"
+            android:textColor="@android:color/black"
+            android:textSize="14sp" />
+    </LinearLayout>
 </RelativeLayout> 

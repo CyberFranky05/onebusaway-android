@@ -1,30 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Widget background -->
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#FFFFFF" />
-            <corners android:radius="8dp" />
-            <stroke
-                android:width="1dp"
-                android:color="#E0E0E0" />
-            <size android:height="240dp" />
-        </shape>
-    </item>
-    <!-- Header background -->
-    <item android:top="8dp" android:left="8dp" android:right="8dp">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/theme_primary" />
-            <corners
-                android:topLeftRadius="8dp"
-                android:topRightRadius="8dp" />
-            <size android:height="80dp" />
-        </shape>
-    </item>
-    <!-- Content area -->
-    <item android:top="96dp" android:left="8dp" android:right="8dp" android:bottom="8dp">
-        <shape android:shape="rectangle">
-            <solid android:color="#FAFAFA" />
-        </shape>
-    </item>
-</layer-list> 
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="120dp"
+    android:viewportWidth="200"
+    android:viewportHeight="120">
+
+    <!-- Widget Background -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M0,0h200v120h-200z" />
+
+    <!-- Header Bar -->
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M0,0h200v30h-200z" />
+
+    <!-- Header Text -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,20h100v2h-100z" />
+
+    <!-- Refresh Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M180,15m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M180,11v2c2.2,0 4,1.8 4,4s-1.8,4 -4,4 -4,-1.8 -4,-4h2c0,1.1 0.9,2 2,2s2,-0.9 2,-2 -0.9,-2 -2,-2v2l-3,-3 3,-3" />
+
+    <!-- First Arrival Item -->
+    <path
+        android:fillColor="#0D8F35"
+        android:pathData="M10,40h24v16h-24z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,48h8v2h-8z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M40,48h80v2h-80z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M170,48h20v2h-20z" />
+    <path
+        android:fillColor="#757575"
+        android:pathData="M170,54h20v1h-20z" />
+    
+    <!-- Divider -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M10,60h180v1h-180z" />
+
+    <!-- Second Arrival Item -->
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M10,70h24v16h-24z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,78h8v2h-8z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M40,78h80v2h-80z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M170,78h20v2h-20z" />
+    <path
+        android:fillColor="#757575"
+        android:pathData="M170,84h20v1h-20z" />
+    
+    <!-- Divider -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M10,90h180v1h-180z" />
+
+    <!-- Third Arrival Item -->
+    <path
+        android:fillColor="#D32F2F"
+        android:pathData="M10,100h24v16h-24z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,108h8v2h-8z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M40,108h80v2h-80z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M170,108h20v2h-20z" />
+    <path
+        android:fillColor="#757575"
+        android:pathData="M170,114h20v1h-20z" />
+</vector> 
