@@ -17,6 +17,7 @@ package org.onebusaway.android.widget;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -38,6 +39,18 @@ public class WidgetCardBuilder {
     private static final String TAG = "WidgetCardBuilder";
     private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("h:mm a", Locale.getDefault());
     private static final int MAX_CARDS = 5; // Maximum number of cards to show
+
+    // Add status color constants
+    private static final int COLOR_ON_TIME = Color.parseColor("#008000"); // Green
+    private static final int COLOR_DELAYED = Color.parseColor("#b71c1c"); // Red
+    private static final int COLOR_SCHEDULED = Color.parseColor("#757575"); // Gray
+    private static final int COLOR_NOW = Color.parseColor("#D32F2F"); // Bright red
+
+    // Status indicator resource IDs
+    private static final int INDICATOR_ON_TIME = R.drawable.status_indicator_on_time;
+    private static final int INDICATOR_DELAYED = R.drawable.status_indicator_delayed;
+    private static final int INDICATOR_SCHEDULED = R.drawable.status_indicator_scheduled;
+    private static final int INDICATOR_NOW = R.drawable.status_indicator_now;
 
     /**
      * Builds arrival cards for the widget
@@ -83,15 +96,13 @@ public class WidgetCardBuilder {
                 int routeColor = arrival.getRouteColor() != 0 ? 
                     arrival.getRouteColor() : Color.parseColor("#1976D2"); // Default blue
                 
-                // Create a new route badge background with the specific color
-                int red = Color.red(routeColor);
-                int green = Color.green(routeColor);
-                int blue = Color.blue(routeColor);
-                String colorString = String.format("#%02X%02X%02X", red, green, blue);
+                // Set the background color of the badge
+                cardView.setInt(R.id.route_name, "setBackgroundColor", routeColor);
                 
-                // We can't directly set a dynamic background color with custom shape 
-                // in RemoteViews, so we'll just use setTextColor instead
+                // Set text color to white for contrast
                 cardView.setTextColor(R.id.route_name, Color.WHITE);
+                
+                // Set ETA text color to match route
                 cardView.setTextColor(R.id.eta, routeColor);
             } catch (Exception e) {
                 Log.e(TAG, "Error setting route color", e);
@@ -103,12 +114,24 @@ public class WidgetCardBuilder {
                 arrival.getHeadsign() : "Unknown destination";
             cardView.setTextViewText(R.id.destination, headsign);
             
-            // Calculate arrival time
+            // Calculate arrival time and status
             long eta = arrival.getPredictedArrivalTime();
-            boolean isPredicted = true;
-            if (eta == 0) {
+            boolean isPredicted = (eta != 0);
+            if (!isPredicted) {
                 eta = arrival.getScheduledArrivalTime();
-                isPredicted = false;
+            }
+            
+            // Get arrival status from API
+            String arrivalStatus = arrival.getStatus();
+            
+            // Calculate time difference between scheduled and predicted times
+            long scheduled = arrival.getScheduledArrivalTime();
+            long predicted = arrival.getPredictedArrivalTime();
+            long deviation = 0;
+            
+            // Only calculate deviation if we have predicted times
+            if (predicted > 0 && scheduled > 0) {
+                deviation = predicted - scheduled;
             }
             
             long now = System.currentTimeMillis();
@@ -116,20 +139,73 @@ public class WidgetCardBuilder {
             
             // Format ETA text
             String etaText;
+            int statusColor;
+            int statusIndicator;
+            
             if (minutes <= 0) {
+                // Arriving now
                 etaText = "now";
+                statusColor = COLOR_NOW;
+                statusIndicator = INDICATOR_NOW;
             } else if (minutes < 60) {
+                // Arriving within the hour
                 etaText = minutes + " min";
+                
+                // Determine status color based on prediction and deviation
+                if (!isPredicted) {
+                    // Scheduled time, no real-time data
+                    statusColor = COLOR_SCHEDULED;
+                    statusIndicator = INDICATOR_SCHEDULED;
+                } else if ("EARLY".equals(arrivalStatus) || deviation < -180000) {
+                    // Early arrival (more than 3 minutes)
+                    statusColor = COLOR_DELAYED;
+                    statusIndicator = INDICATOR_DELAYED;
+                } else if ("DELAYED".equals(arrivalStatus) || deviation > 300000) {
+                    // Delayed arrival (more than 5 minutes)
+                    statusColor = COLOR_DELAYED;
+                    statusIndicator = INDICATOR_DELAYED;
+                } else {
+                    // On time
+                    statusColor = COLOR_ON_TIME;
+                    statusIndicator = INDICATOR_ON_TIME;
+                }
             } else {
+                // Arriving later (show time)
                 etaText = TIME_FORMAT.format(new Date(eta));
+                
+                if (!isPredicted) {
+                    statusColor = COLOR_SCHEDULED;
+                    statusIndicator = INDICATOR_SCHEDULED;
+                } else {
+                    statusColor = COLOR_ON_TIME;
+                    statusIndicator = INDICATOR_ON_TIME;
+                }
             }
+            
+            // Set status indicator
+            cardView.setImageViewResource(R.id.status_indicator, statusIndicator);
+            
+            // Set ETA text and color
             cardView.setTextViewText(R.id.eta, etaText);
+            cardView.setTextColor(R.id.eta, statusColor);
             
             // Format detailed status text
             String arrivalTimeText = TIME_FORMAT.format(new Date(eta));
-            String statusType = isPredicted ? "Estimated" : "Scheduled";
-            String statusText = statusType + ": " + etaText + " (" + arrivalTimeText + ")";
+            String statusPrefix = isPredicted ? "Est" : "Sched";
+            
+            // Add status information for clarity
+            String statusSuffix = "";
+            if (isPredicted) {
+                if ("EARLY".equals(arrivalStatus) || deviation < -180000) {
+                    statusSuffix = " (early)";
+                } else if ("DELAYED".equals(arrivalStatus) || deviation > 300000) {
+                    statusSuffix = " (delayed)";
+                }
+            }
+            
+            String statusText = statusPrefix + ": " + etaText + statusSuffix + " (" + arrivalTimeText + ")";
             cardView.setTextViewText(R.id.status, statusText);
+            cardView.setTextColor(R.id.status, Color.parseColor("#707070")); // Keep status text gray
             
             // Add the card to the container
             views.addView(R.id.arrivals_container, cardView);

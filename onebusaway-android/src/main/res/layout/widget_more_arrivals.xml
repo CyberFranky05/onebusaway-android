@@ -1,22 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="8dp"
-    android:layout_marginEnd="8dp"
-    android:layout_marginTop="4dp"
-    android:layout_marginBottom="4dp"
-    android:padding="12dp"
-    android:gravity="center"
-    android:background="#F5F5F5">
+    android:layout_marginStart="6dp"
+    android:layout_marginEnd="6dp"
+    android:layout_marginTop="6dp"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/widget_card_background">
 
-    <TextView
-        android:id="@+id/more_arrivals_text"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#757575"
-        android:textSize="14sp"
-        tools:text="+ 3 more arrivals" />
+        android:padding="12dp"
+        android:gravity="center"
+        android:background="@android:color/transparent"
+        android:orientation="horizontal">
 
-</LinearLayout> 
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_dropdown_arrow"
+            android:layout_marginEnd="10dp"
+            android:tint="#555555" />
+
+        <TextView
+            android:id="@+id/more_arrivals_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#0D47A1"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            tools:text="+ 3 more arrivals" />
+    </LinearLayout>
+</RelativeLayout> 
