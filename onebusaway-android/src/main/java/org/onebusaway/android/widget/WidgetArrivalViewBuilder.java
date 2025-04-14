@@ -16,14 +16,9 @@
 package org.onebusaway.android.widget;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.text.TextUtils;
-import android.view.View;
-import android.widget.RemoteViews;
 
-import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
-import org.onebusaway.android.util.UIUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -116,25 +111,5 @@ public class WidgetArrivalViewBuilder {
         }
         
         return arrivalsText.toString();
-    }
-
-    /**
-     * Updates the widget with arrival information
-     *
-     * @param views RemoteViews for the widget
-     * @param context Application context
-     * @param arrivals Array of arrival information
-     * @param maxArrivals Maximum number of arrivals to display
-     */
-    public static void updateArrivalsInWidget(RemoteViews views, Context context, ObaArrivalInfo[] arrivals, int maxArrivals) {
-        if (arrivals == null || arrivals.length == 0) {
-            // Show no arrivals message
-            views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time.");
-            return;
-        }
-
-        // Format arrivals as text and set to the TextView
-        String arrivalsText = formatArrivalsAsText(context, arrivals, maxArrivals);
-        views.setTextViewText(R.id.no_arrivals, arrivalsText);
     }
 } 

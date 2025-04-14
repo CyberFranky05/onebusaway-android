@@ -77,18 +77,30 @@
         android:ellipsize="end"
         android:maxLines="1" />
 
-    <!-- Arrivals display -->
-    <TextView
-        android:id="@+id/no_arrivals"
+    <!-- Content area -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/direction"
-        android:padding="8dp"
-        android:lineSpacingExtra="4dp"
-        android:fontFamily="sans-serif"
-        android:textStyle="normal"
-        android:background="@android:color/white"
-        android:textColor="@android:color/black"
-        android:textSize="14sp" />
+        android:background="@android:color/white">
+
+        <!-- No arrivals message (shown when empty) -->
+        <TextView
+            android:id="@+id/no_arrivals"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="12dp"
+            android:gravity="center"
+            android:textColor="@android:color/black"
+            android:textSize="14sp" />
+
+        <!-- LinearLayout for arrival cards -->
+        <LinearLayout
+            android:id="@+id/arrivals_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="4dp" />
+    </FrameLayout>
 
 </RelativeLayout> 

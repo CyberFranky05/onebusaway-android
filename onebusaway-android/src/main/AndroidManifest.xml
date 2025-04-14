@@ -406,16 +406,6 @@
             android:directBootAware="true"
             android:process=":widget_service" />
 
-        <!-- Boot completed receiver to restore widgets after device restart -->
-        <receiver
-            android:name=".widget.WidgetBootReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
         <!-- Opt-out of June 2018 Android Maps styling with pin POI icons - see #891 -->
         <meta-data android:name="com.google.android.gms.maps.API_OPTIONS" android:value="B3H9HE845CFHYG"/>
 

@@ -37,6 +37,7 @@ import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
 import org.onebusaway.android.ui.HomeActivity;
 import org.onebusaway.android.util.UIUtils;
 import org.onebusaway.android.widget.FavoriteStopWidgetProvider;
+import org.onebusaway.android.widget.WidgetCardBuilder;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -214,16 +215,14 @@ public class ArrivalsWidgetJobService extends JobService {
                     views.setTextViewText(R.id.direction, stop.getName());
                 }
                 
-                // Reset visibility
-                views.setViewVisibility(R.id.no_arrivals, View.GONE);
-                
                 // Format and add arrivals
                 if (arrivals != null && arrivals.length > 0) {
-                    // Instead of using WidgetArrivalViewBuilder which doesn't exist with the expected signature,
-                    // directly update the views with arrival information
-                    updateViewsWithArrivals(views, arrivals);
+                    // Use the new card builder to create card-based UI
+                    WidgetCardBuilder.buildArrivalCards(mContext, views, arrivals);
+                    Log.d(TAG, "Created arrival cards for " + arrivals.length + " arrivals");
                 } else {
                     views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                    views.setViewVisibility(R.id.arrivals_container, View.GONE);
                     views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals");
                 }
                 
@@ -239,87 +238,6 @@ public class ArrivalsWidgetJobService extends JobService {
             }
         }
         
-        /**
-         * Update views with arrival information
-         */
-        private void updateViewsWithArrivals(RemoteViews views, ObaArrivalInfo[] arrivals) {
-            if (arrivals.length == 0) {
-                return;
-            }
-            
-            try {
-                // Since we don't have dedicated views for arrivals in the layout,
-                // we'll format arrivals information as text in the no_arrivals TextView
-                StringBuilder arrivalsText = new StringBuilder();
-                
-                // Format the first few arrivals (up to 3)
-                int count = Math.min(arrivals.length, 3);
-                for (int i = 0; i < count; i++) {
-                    ObaArrivalInfo arrival = arrivals[i];
-                    
-                    // Get route name and destination
-                    String routeName = arrival.getShortName();
-                    String destination = arrival.getHeadsign();
-                    
-                    // Format arrival time
-                    long timeInMillis = arrival.getPredictedArrivalTime();
-                    if (timeInMillis == 0) {
-                        timeInMillis = arrival.getScheduledArrivalTime();
-                    }
-                    
-                    String formattedTime = formatArrivalTime(timeInMillis);
-                    
-                    // Format as a single line: "RouteNumber - Destination: Time"
-                    arrivalsText.append(routeName)
-                            .append(" - ")
-                            .append(destination)
-                            .append(": ")
-                            .append(formattedTime);
-                    
-                    // Add a newline if not the last item
-                    if (i < count - 1) {
-                        arrivalsText.append("\n");
-                    }
-                }
-                
-                // Update the no_arrivals TextView with our formatted text
-                views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
-                views.setTextViewText(R.id.no_arrivals, arrivalsText.toString());
-                
-            } catch (Exception e) {
-                Log.e(TAG, "Error formatting arrivals", e);
-                // Fallback to simple message
-                views.setTextViewText(R.id.no_arrivals, "Unable to format arrivals");
-            }
-        }
-        
-        /**
-         * Format arrival time as a human-readable string
-         */
-        private String formatArrivalTime(long timeInMillis) {
-            long currentTimeMillis = System.currentTimeMillis();
-            long differenceMillis = timeInMillis - currentTimeMillis;
-            
-            if (differenceMillis < 0) {
-                return "Departed";
-            }
-            
-            // Convert to minutes
-            long minutesDifference = differenceMillis / (60 * 1000);
-            
-            if (minutesDifference < 1) {
-                return "Now";
-            } else if (minutesDifference == 1) {
-                return "1 min";
-            } else if (minutesDifference < 60) {
-                return minutesDifference + " mins";
-            } else {
-                // Format as time
-                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("h:mm a", java.util.Locale.US);
-                return sdf.format(new java.util.Date(timeInMillis));
-            }
-        }
-        
         private void updateWidgetWithError() {
             try {
                 AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(mContext);
@@ -331,6 +249,7 @@ public class ArrivalsWidgetJobService extends JobService {
                 
                 // Show error message
                 views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                views.setViewVisibility(R.id.arrivals_container, View.GONE);
                 views.setTextViewText(R.id.no_arrivals, "Tap refresh to try again");
                 
                 // Set up all the pending intents for widget interactions

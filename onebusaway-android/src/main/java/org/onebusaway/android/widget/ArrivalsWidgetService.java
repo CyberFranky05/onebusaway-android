@@ -44,6 +44,7 @@ import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
 import org.onebusaway.android.util.RegionUtils;
 import org.onebusaway.android.util.UIUtils;
 import org.onebusaway.android.widget.WidgetArrivalViewBuilder;
+import org.onebusaway.android.widget.WidgetCardBuilder;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -190,15 +191,18 @@ public class ArrivalsWidgetService extends IntentService {
             try {
                 if (arrivalsCount == 0) {
                     // No arrivals - show message
+                    views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                    views.setViewVisibility(R.id.arrivals_container, View.GONE);
                     views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time.");
                 } else {
-                    // Use the WidgetArrivalViewBuilder to format the arrivals as text
-                    String arrivalsText = WidgetArrivalViewBuilder.formatArrivalsAsText(this, arrivals, 4);
-                    views.setTextViewText(R.id.no_arrivals, arrivalsText);
-                    Log.d(TAG, "Set arrival text for " + arrivalsCount + " arrivals");
+                    // Use the WidgetCardBuilder to create card-based UI
+                    WidgetCardBuilder.buildArrivalCards(this, views, arrivals);
+                    Log.d(TAG, "Created arrival cards for " + arrivalsCount + " arrivals");
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error setting up arrival text", e);
+                Log.e(TAG, "Error setting up arrival cards", e);
+                views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);
+                views.setViewVisibility(R.id.arrivals_container, View.GONE);
                 views.setTextViewText(R.id.no_arrivals, "Error displaying arrivals. Please try again.");
             }
             
@@ -208,7 +212,7 @@ public class ArrivalsWidgetService extends IntentService {
             // Update widget with the new views
             try {
                 appWidgetManager.updateAppWidget(widgetId, views);
-                Log.d(TAG, "Widget updated successfully with arrival text");
+                Log.d(TAG, "Widget updated successfully with arrival cards");
             } catch (Exception e) {
                 Log.e(TAG, "Error updating widget", e);
             }
