@@ -24,6 +24,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
@@ -41,6 +43,7 @@ import org.onebusaway.android.io.elements.ObaRegion;
 import org.onebusaway.android.io.elements.ObaStop;
 import org.onebusaway.android.io.request.ObaArrivalInfoRequest;
 import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
+import org.onebusaway.android.provider.ObaContract;
 import org.onebusaway.android.util.RegionUtils;
 import org.onebusaway.android.util.UIUtils;
 import org.onebusaway.android.widget.WidgetArrivalViewBuilder;
@@ -92,17 +95,48 @@ public class ArrivalsWidgetService extends IntentService {
             return;
         }
 
+        // Verify the widget exists before proceeding
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(this);
+        boolean widgetExists = false;
+        
+        try {
+            int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(this, FavoriteStopWidgetProvider.class));
+            for (int id : appWidgetIds) {
+                if (id == widgetId) {
+                    widgetExists = true;
+                    break;
+                }
+            }
+            
+            if (!widgetExists) {
+                Log.d(TAG, "Widget " + widgetId + " no longer exists, skipping update");
+                return;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking if widget exists", e);
+            // Continue anyway as a fallback
+        }
+
         Log.d(TAG, "Updating arrivals for stop: " + stopId + " (widget " + widgetId + ")");
 
         // Get widget manager and views
-        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(this);
         RemoteViews views = new RemoteViews(getPackageName(), R.layout.widget_favorite_stop);
 
         // Show loading indicator
         views.setTextViewText(R.id.stop_name, stopName != null ? stopName : "Loading...");
         views.setTextViewText(R.id.direction, "Loading arrivals data...");
         views.setTextViewText(R.id.no_arrivals, "Checking for arrivals at stop " + stopId);
+        
+        // First update the widget to show loading state
         appWidgetManager.updateAppWidget(widgetId, views);
+        
+        // Then notify the list adapter to trigger a data refresh in a try-catch block
+        try {
+            appWidgetManager.notifyAppWidgetViewDataChanged(widgetId, R.id.arrivals_list);
+        } catch (Exception e) {
+            Log.e(TAG, "Error notifying data changes", e);
+            // Continue anyway
+        }
         
         Log.d(TAG, "Loading screen set for widget");
 
@@ -248,59 +282,89 @@ public class ArrivalsWidgetService extends IntentService {
             // Check if Application is already available
             Application app = Application.get();
             if (app != null) {
-                Log.d(TAG, "Application already initialized");
+                // Check if region is already set
+                ObaRegion region = app.getCurrentRegion();
+                if (region != null) {
+                    Log.d(TAG, "Application already initialized with region: " + region.getName());
+                    return true;
+                } else {
+                    Log.d(TAG, "Application initialized but no region set, initializing region");
+                    // Initialize region if needed
+                    initializeObaRegion();
+                    return true;
+                }
+            } else {
+                Log.d(TAG, "Application not initialized, initializing manually");
+                // Initialize OBA API with critical configuration
+                initializeObaApi();
+                
+                // Try to init region information
+                initializeObaRegion();
+                
+                Log.d(TAG, "Manual initialization completed");
                 return true;
             }
         } catch (Exception e) {
-            Log.d(TAG, "Application not yet initialized, initializing now", e);
-        }
-        
-        try {
-            // Force Application initialization
-            Application app = Application.get();
-            
-            if (app != null) {
-                Log.d(TAG, "Application initialized successfully");
-                
-                // Load current region if not loaded
-                ObaRegion region = app.getCurrentRegion();
-                if (region == null) {
-                    Log.d(TAG, "No region set, loading stored region");
-                    
-                    // Try to load stored region from preferences
-                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-                    long regionId = prefs.getLong(getString(R.string.preference_key_region), -1);
-                    if (regionId != -1) {
-                        ArrayList<ObaRegion> regions = RegionUtils.getRegions(getApplicationContext(), false);
-                        if (regions != null) {
-                            for (ObaRegion r : regions) {
-                                if (r.getId() == regionId) {
-                                    region = r;
-                                    Log.d(TAG, "Found stored region: " + region.getName());
-                                    app.setCurrentRegion(region);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (region == null) {
-                        Log.d(TAG, "No stored region found");
-                        loadRegionsInBackground();
-                        return false;
-                    }
-                }
-                
-                // Initialize OBA API
-                ObaApi.getDefaultContext().setRegion(region);
-                return true;
-            } else {
-                Log.e(TAG, "Application initialization failed");
-                return false;
-            }
-        } catch (Exception ex) {
-            Log.e(TAG, "Error during application initialization", ex);
+            Log.e(TAG, "Error initializing app", e);
             return false;
+        }
+    }
+    
+    /**
+     * Initialize OBA API with minimal required configuration
+     */
+    private void initializeObaApi() {
+        try {
+            // Get or generate app UUID
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+            String uuid = prefs.getString(Application.APP_UID, null);
+            if (uuid == null) {
+                // Generate one
+                uuid = java.util.UUID.randomUUID().toString();
+                prefs.edit().putString(Application.APP_UID, uuid).apply();
+            }
+            
+            // Get app version
+            PackageManager pm = getPackageManager();
+            PackageInfo appInfo = null;
+            try {
+                appInfo = pm.getPackageInfo(getPackageName(), PackageManager.GET_META_DATA);
+                // Initialize OBA API with version and UUID
+                ObaApi.getDefaultContext().setAppInfo(appInfo.versionCode, uuid);
+                Log.d(TAG, "OBA API initialized with version " + appInfo.versionCode);
+            } catch (PackageManager.NameNotFoundException e) {
+                Log.e(TAG, "Could not get package info", e);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing OBA API", e);
+        }
+    }
+    
+    /**
+     * Initialize OBA region data
+     */
+    private void initializeObaRegion() {
+        try {
+            // Read the region preference, look it up in the DB, then set the region
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+            long id = prefs.getLong(getString(R.string.preference_key_region), -1);
+            if (id < 0) {
+                Log.d(TAG, "No region preference set");
+                return;
+            }
+            
+            // Get region from content provider
+            ObaRegion region = ObaContract.Regions.get(this, (int) id);
+            if (region == null) {
+                Log.d(TAG, "Could not find region with ID " + id);
+                return;
+            }
+            
+            // Set the region for the API
+            ObaApi.getDefaultContext().setRegion(region);
+            Log.d(TAG, "Region set to " + region.getName());
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing OBA region", e);
         }
     }
     
@@ -340,60 +404,81 @@ public class ArrivalsWidgetService extends IntentService {
     }
 
     /**
-     * Utility method to request an update for a specific stop
+     * Request an update for the widget
+     * @param context The context
+     * @param stopId Stop ID to update
+     * @param stopName Stop name (can be null)
+     * @param widgetId Widget ID to update
      */
     public static void requestUpdate(Context context, String stopId, String stopName, int widgetId) {
         Log.d(TAG, "Requesting update for widget " + widgetId + ", stop " + stopId + " (" + stopName + ")");
         
-        try {
-            // Use JobScheduler instead of directly starting the service
-            scheduleUpdateJob(context, stopId, stopName, widgetId);
-        } catch (Exception e) {
-            Log.e(TAG, "Error scheduling update job", e);
-        }
-    }
-    
-    /**
-     * Schedule the widget update job using JobScheduler
-     */
-    private static void scheduleUpdateJob(Context context, String stopId, String stopName, int widgetId) {
-        JobScheduler jobScheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        // Use application context to prevent leaks
+        Context appContext = context.getApplicationContext();
         
-        // Create PersistableBundle with the extras
-        PersistableBundle bundle = new PersistableBundle();
-        bundle.putString(EXTRA_STOP_ID, stopId);
-        bundle.putString(EXTRA_STOP_NAME, stopName);
-        bundle.putInt(EXTRA_WIDGET_ID, widgetId);
+        // Create a JobInfo to run the service
+        ComponentName serviceName = new ComponentName(appContext, ArrivalsWidgetJobService.class);
         
-        // Create a unique job ID for this widget
-        int jobId = widgetId + 10000;
+        PersistableBundle extras = new PersistableBundle();
+        extras.putString(EXTRA_STOP_ID, stopId);
+        extras.putString(EXTRA_STOP_NAME, stopName != null ? stopName : "");
+        extras.putInt(EXTRA_WIDGET_ID, widgetId);
         
-        // Build job
-        JobInfo jobInfo = new JobInfo.Builder(jobId, new ComponentName(context, ArrivalsWidgetJobService.class))
-                .setExtras(bundle)
-                .setMinimumLatency(0) // run immediately if possible
-                .setOverrideDeadline(1000) // or within 1 second
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY) // require network
+        // Set a reasonable deadline - 10 seconds is much better than 1 second
+        JobInfo jobInfo = new JobInfo.Builder(widgetId + 10000, serviceName)
+                .setExtras(extras)
+                .setMinimumLatency(0) // Start immediately
+                .setOverrideDeadline(10000) // But wait maximum 10 seconds
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY) // Require network
                 .build();
         
         // Schedule the job
-        int result = jobScheduler.schedule(jobInfo);
+        JobScheduler scheduler = (JobScheduler) appContext.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        int result = scheduler.schedule(jobInfo);
+        
         if (result == JobScheduler.RESULT_SUCCESS) {
             Log.d(TAG, "Job scheduled successfully for widget " + widgetId);
         } else {
             Log.e(TAG, "Failed to schedule job for widget " + widgetId);
             
-            // Fallback to direct service start for foreground app
+            // Fall back to direct update if job scheduling fails
             try {
-                Intent intent = new Intent(context, ArrivalsWidgetService.class);
-                intent.setAction(ACTION_UPDATE_ARRIVALS);
-                intent.putExtra(EXTRA_STOP_ID, stopId);
-                intent.putExtra(EXTRA_STOP_NAME, stopName);
-                intent.putExtra(EXTRA_WIDGET_ID, widgetId);
-                context.startService(intent);
+                // Update the widget directly
+                updateWidget(appContext, stopId, stopName, widgetId);
             } catch (Exception e) {
-                Log.e(TAG, "Failed to start service directly", e);
+                Log.e(TAG, "Error during direct widget update", e);
             }
+        }
+    }
+
+    /**
+     * Direct update method for the widget
+     */
+    private static void updateWidget(Context context, String stopId, String stopName, int widgetId) {
+        Log.d(TAG, "Direct update for widget " + widgetId);
+        
+        try {
+            // Verify the widget exists before notifying
+            AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+            int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, FavoriteStopWidgetProvider.class));
+            boolean widgetExists = false;
+            
+            for (int id : appWidgetIds) {
+                if (id == widgetId) {
+                    widgetExists = true;
+                    break;
+                }
+            }
+            
+            if (widgetExists) {
+                // Update the ListView only if the widget still exists
+                appWidgetManager.notifyAppWidgetViewDataChanged(widgetId, R.id.arrivals_list);
+                Log.d(TAG, "Successfully notified data changes for widget " + widgetId);
+            } else {
+                Log.d(TAG, "Widget " + widgetId + " no longer exists, skipping update");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating widget data", e);
         }
     }
 } 

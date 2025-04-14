@@ -17,10 +17,15 @@ package org.onebusaway.android.widget;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
 import android.appwidget.AppWidgetManager;
@@ -29,10 +34,11 @@ import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
 import org.onebusaway.android.io.request.ObaArrivalInfoRequest;
 import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
+import org.onebusaway.android.provider.ObaContract;
+import org.onebusaway.android.util.UIUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -44,6 +50,19 @@ public class ArrivalsWidgetListService extends RemoteViewsService {
 
     @Override
     public RemoteViewsFactory onGetViewFactory(Intent intent) {
+        // Always trigger onDataSetChanged when the service starts
+        // This ensures the list is always populated and scrollable
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(this);
+        int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                AppWidgetManager.INVALID_APPWIDGET_ID);
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            try {
+                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+            } catch (Exception e) {
+                Log.e(TAG, "Error notifying data changes during factory creation", e);
+            }
+        }
+        
         return new ArrivalsRemoteViewsFactory(this.getApplicationContext(), intent);
     }
 
@@ -60,23 +79,50 @@ public class ArrivalsWidgetListService extends RemoteViewsService {
         private static final int COLOR_SCHEDULED = Color.parseColor("#757575"); // Gray
         private static final int COLOR_NOW = Color.parseColor("#D32F2F"); // Bright red
 
-        private Context mContext;
-        private int mWidgetId;
+        // Status constants
+        private static final String DEVIATION_EARLY = "early";
+        private static final String DEVIATION_DELAYED = "delayed";
+        private static final String DEVIATION_ON_TIME = "ontime";
+        
+        // Intent extras for the widget
+        private static final String EXTRA_ARRIVAL_INFO = "arrival_info";
+
+        // Cache the application context to prevent memory leaks
+        private final Context mContext;
+        private final int mWidgetId;
         private String mStopId;
-        private List<ObaArrivalInfo> mArrivals = new ArrayList<>();
-        private boolean mIsNarrow = false;
+        // Use ArrayList for better performance with indexed access
+        private final List<ObaArrivalInfo> mArrivals = new ArrayList<>();
+        private final boolean mIsNarrow;
+        private final int mSizeCategory; // 0=small, 1=medium, 2=large, 3=full-width
+        
+        // Always use maximum available arrivals for scrolling
+        // This ensures proper scrolling behavior even if the widget height changes
+        private final int mMaxArrivalsToShow = MAX_ARRIVALS;
+
+        // Keep a cache of RemoteViews to improve performance
+        private final int mLayoutResourceId;
 
         public ArrivalsRemoteViewsFactory(Context context, Intent intent) {
-            mContext = context;
+            // Always use application context to prevent memory leaks
+            mContext = context.getApplicationContext();
             mWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
             mStopId = intent.getStringExtra("stopId");
             mIsNarrow = intent.getBooleanExtra("isNarrow", false);
-            Log.d(TAG, "Created factory for widget ID: " + mWidgetId + ", stop ID: " + mStopId);
+            mSizeCategory = intent.getIntExtra("sizeCategory", 1); // Default to medium if not specified
+            
+            // Just use the standard layout for all sizes - we'll adjust the content dynamically
+            mLayoutResourceId = R.layout.widget_arrival_card;
+            
+            Log.d(TAG, "Created factory for widget ID: " + mWidgetId + 
+                  ", stop ID: " + mStopId + ", size category: " + mSizeCategory +
+                  ", max arrivals: " + mMaxArrivalsToShow);
         }
 
         @Override
         public void onCreate() {
-            // Nothing to do
+            // Pre-allocate the arrivals list
+            mArrivals.clear();
         }
 
         @Override
@@ -90,6 +136,9 @@ public class ArrivalsWidgetListService extends RemoteViewsService {
             }
             
             try {
+                // First, ensure the app is properly initialized
+                FavoriteStopWidgetProvider.initializeAppIfNeeded(mContext);
+                
                 // Get current stop ID
                 String stopId = FavoriteStopWidgetProvider.getStopIdForWidget(mContext, mWidgetId);
                 if (stopId == null) {
@@ -132,188 +181,158 @@ public class ArrivalsWidgetListService extends RemoteViewsService {
 
         @Override
         public void onDestroy() {
-            mArrivals.clear();
+            // Clean up resources here
         }
 
         @Override
         public int getCount() {
+            // Return the number of items in the data set
             return mArrivals.size();
         }
 
         @Override
         public RemoteViews getViewAt(int position) {
-            if (position >= mArrivals.size()) {
+            // Position will be -1 sometimes when called from the framework
+            if (position < 0 || position >= mArrivals.size()) {
                 return null;
             }
-            
+
+            // Get arrival info
             ObaArrivalInfo arrival = mArrivals.get(position);
             
-            // Create a RemoteViews for the card
-            RemoteViews cardView = new RemoteViews(mContext.getPackageName(), R.layout.widget_arrival_card);
+            // Create remote views for this arrival
+            RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_arrival_card);
             
-            // Set route name and color
-            String routeName = !TextUtils.isEmpty(arrival.getShortName()) ? 
-                arrival.getShortName() : arrival.getRouteId();
-            cardView.setTextViewText(R.id.route_name, routeName);
+            // Route information
+            rv.setTextViewText(R.id.route_name, arrival.getShortName());
             
-            // Try to set the route color if available
-            try {
-                int routeColor = arrival.getRouteColor() != 0 ? 
-                    arrival.getRouteColor() : Color.parseColor("#1976D2"); // Default blue
-                cardView.setInt(R.id.route_name, "setBackgroundColor", routeColor);
-                cardView.setTextColor(R.id.route_name, Color.WHITE);
-            } catch (Exception e) {
-                Log.e(TAG, "Error setting route color", e);
-            }
+            // Set route color if available
+            int color = getRouteColor(arrival);
+            rv.setTextColor(R.id.route_name, color);
+            rv.setInt(R.id.route_name, "setBackgroundColor", color);
             
-            // Set destination
-            String headsign = !TextUtils.isEmpty(arrival.getHeadsign()) ?
-                arrival.getHeadsign() : "Unknown destination";
-            cardView.setTextViewText(R.id.destination, headsign);
+            // Set headsign/destination
+            rv.setTextViewText(R.id.destination, arrival.getHeadsign());
             
-            // Calculate arrival time and status
-            long eta = arrival.getPredictedArrivalTime();
-            boolean isPredicted = (eta != 0);
-            if (!isPredicted) {
-                eta = arrival.getScheduledArrivalTime();
-            }
+            // Calculate ETA in minutes
+            long eta = calculateEta(arrival);
+            rv.setTextViewText(R.id.eta, formatMinutes(eta));
             
-            // Calculate time difference between now and arrival
-            long now = System.currentTimeMillis();
-            long minutes = (eta - now) / 60000;
+            // Set ETA color based on status
+            int statusColor = getStatusColor(arrival);
+            rv.setTextColor(R.id.eta, statusColor);
+            rv.setTextColor(R.id.eta_min, statusColor);
             
-            // Format ETA text
-            String etaText;
-            int statusColor;
+            // Status text
+            String statusText = formatStatusText(arrival, eta);
+            rv.setTextViewText(R.id.status, statusText);
             
-            if (minutes <= 0) {
-                // Arriving now
-                etaText = "now";
-                statusColor = COLOR_NOW;
-            } else if (minutes < 60) {
-                // Arriving within the hour - just the number for minutes
-                etaText = String.valueOf(minutes);
-                
-                // Determine status color based on prediction and status
-                if (!isPredicted) {
-                    statusColor = COLOR_SCHEDULED;
-                } else if ("EARLY".equals(arrival.getStatus()) || 
-                        (arrival.getScheduledArrivalTime() > 0 && 
-                         arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime() < -180000)) {
-                    statusColor = COLOR_DELAYED;
-                } else if ("DELAYED".equals(arrival.getStatus()) ||
-                        (arrival.getScheduledArrivalTime() > 0 && 
-                         arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime() > 300000)) {
-                    statusColor = COLOR_DELAYED;
-                } else {
-                    statusColor = COLOR_ON_TIME;
-                }
-            } else {
-                // Arriving later (show time)
-                etaText = TIME_FORMAT.format(new Date(eta));
-                statusColor = isPredicted ? COLOR_ON_TIME : COLOR_SCHEDULED;
-            }
+            // Set click intent for this arrival
+            Intent intent = new Intent();
+            intent.putExtra(EXTRA_ARRIVAL_INFO, arrival);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, mWidgetId);
+            rv.setOnClickFillInIntent(R.id.route_name, intent);
             
-            // Set ETA text and color
-            cardView.setTextViewText(R.id.eta, etaText);
-            cardView.setTextColor(R.id.eta, statusColor);
-            cardView.setTextColor(R.id.eta_min, statusColor);
-            
-            // Show or hide the "min" label for ETA
-            if (minutes < 60 && minutes > 0) {
-                cardView.setInt(R.id.eta_min, "setVisibility", 0); // View.VISIBLE
-            } else {
-                cardView.setInt(R.id.eta_min, "setVisibility", 8); // View.GONE
-            }
-            
-            // Set arrival time text
-            String arrivalTimeText;
-            if (mIsNarrow) {
-                arrivalTimeText = TIME_FORMAT.format(new Date(eta));
-                
-                // Hide status text in very narrow widgets
-                int minWidth = mContext.getResources().getDimensionPixelSize(R.dimen.widget_min_width);
-                if (minWidth < 180) {
-                    cardView.setInt(R.id.status, "setVisibility", 8); // View.GONE
-                }
-            } else {
-                arrivalTimeText = "Arriving at " + TIME_FORMAT.format(new Date(eta));
-            }
-            cardView.setTextViewText(R.id.status, arrivalTimeText);
-            
-            // Set status pill for early/delayed arrivals
-            if (isPredicted && 
-                (("EARLY".equals(arrival.getStatus()) || 
-                  (arrival.getScheduledArrivalTime() > 0 && 
-                   arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime() < -180000)) || 
-                 ("DELAYED".equals(arrival.getStatus()) ||
-                  (arrival.getScheduledArrivalTime() > 0 && 
-                   arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime() > 300000)))) {
-                
-                cardView.setInt(R.id.status_pill, "setVisibility", 0); // View.VISIBLE
-                
-                String pillText;
-                
-                if ("EARLY".equals(arrival.getStatus()) || 
-                    (arrival.getScheduledArrivalTime() > 0 && 
-                     arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime() < -180000)) {
-                    
-                    long deviation = arrival.getScheduledArrivalTime() - arrival.getPredictedArrivalTime();
-                    int earlyMins = (int)(deviation / 60000);
-                    
-                    if (mIsNarrow) {
-                        pillText = "early";
-                    } else {
-                        pillText = earlyMins + " min early";
-                    }
-                } else {
-                    long deviation = arrival.getPredictedArrivalTime() - arrival.getScheduledArrivalTime();
-                    int delayMins = (int)(deviation / 60000);
-                    
-                    if (mIsNarrow) {
-                        pillText = "delay";
-                    } else {
-                        pillText = delayMins + " min delay";
-                    }
-                }
-                
-                cardView.setTextViewText(R.id.status_pill, pillText);
-                cardView.setInt(R.id.status_pill, "setBackgroundColor", COLOR_DELAYED);
-            } else {
-                cardView.setInt(R.id.status_pill, "setVisibility", 8); // View.GONE
-            }
-            
-            // Set up fill-in intent for individual items
-            Bundle extras = new Bundle();
-            extras.putString("stopId", mStopId);
-            extras.putString("routeId", arrival.getRouteId());
-            extras.putInt("position", position);
-            
-            Intent fillInIntent = new Intent();
-            fillInIntent.putExtras(extras);
-            cardView.setOnClickFillInIntent(R.id.route_name, fillInIntent);
-            
-            return cardView;
+            return rv;
         }
 
         @Override
         public RemoteViews getLoadingView() {
-            return null; // Use default loading view
+            // Return a view to display while the list is loading
+            return null;
         }
 
         @Override
         public int getViewTypeCount() {
+            // Return the number of types of views that will be created by this factory
             return 1;
         }
 
         @Override
         public long getItemId(int position) {
+            // Return the stable ID of the item at position
             return position;
         }
 
         @Override
         public boolean hasStableIds() {
+            // Return true if the IDs are stable across changes to the adapter's data
             return true;
         }
+
+        /**
+         * Calculate ETA in minutes
+         */
+        private long calculateEta(ObaArrivalInfo arrival) {
+            long now = System.currentTimeMillis();
+            long arrivalTime = arrival.getPredicted() ? 
+                    arrival.getPredictedArrivalTime() : 
+                    arrival.getScheduledArrivalTime();
+            
+            // Convert to minutes, round up if necessary
+            return Math.max(0, (arrivalTime - now) / 60000);
+        }
+        
+        /**
+         * Format minutes for display
+         */
+        private String formatMinutes(long minutes) {
+            if (minutes <= 0) {
+                return "0";
+            }
+            return String.valueOf(minutes);
+        }
+
+        /**
+         * Format status text based on arrival info
+         */
+        private String formatStatusText(ObaArrivalInfo arrival, long etaMinutes) {
+            if (etaMinutes <= 0) {
+                return "Arriving now";
+            }
+            
+            SimpleDateFormat timeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+            long arrivalTime = arrival.getPredicted() ? 
+                    arrival.getPredictedArrivalTime() : 
+                    arrival.getScheduledArrivalTime();
+            
+            String time = timeFormat.format(arrivalTime);
+            
+            if (arrival.getPredicted()) {
+                return "Arriving at " + time;
+            } else {
+                return "Scheduled: " + time;
+            }
+        }
+
+        /**
+         * Get color for route display
+         */
+        private int getRouteColor(ObaArrivalInfo arrival) {
+            try {
+                return Color.parseColor("#" + arrival.getRouteColor());
+            } catch (Exception e) {
+                return Color.BLACK;
+            }
+        }
+        
+        /**
+         * Get color based on arrival status
+         */
+        private int getStatusColor(ObaArrivalInfo arrival) {
+            long eta = calculateEta(arrival);
+            if (eta < 0) {
+                return COLOR_NOW;
+            }
+            
+            String status = arrival.getStatus();
+            if (DEVIATION_EARLY.equals(status)) {
+                return COLOR_DELAYED; // We use red for early too
+            } else if (DEVIATION_DELAYED.equals(status)) {
+                return COLOR_DELAYED;
+            } else {
+                return COLOR_ON_TIME;
+            }
+        }
     }
-} 
+}

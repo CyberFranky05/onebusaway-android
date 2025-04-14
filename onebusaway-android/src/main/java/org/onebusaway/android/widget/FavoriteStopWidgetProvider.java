@@ -18,10 +18,14 @@ package org.onebusaway.android.widget;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -76,18 +80,91 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     /**
      * Make sure the Application class is initialized properly
+     * @return true if initialization was successful or app was already initialized
      */
-    private void initializeAppIfNeeded(Context context) {
+    public static boolean initializeAppIfNeeded(Context context) {
         try {
-            // Ensure OBA API is initialized
+            // Check if Application is already available
             org.onebusaway.android.app.Application app = org.onebusaway.android.app.Application.get();
             if (app != null) {
                 Log.d(TAG, "Application already initialized");
+                return true;
             } else {
-                Log.e(TAG, "Could not get Application instance");
+                Log.d(TAG, "Application not initialized, initializing manually");
+                // We need to manually initialize critical parts of the OBA system
+                // Get application context to avoid memory leaks
+                Context appContext = context.getApplicationContext();
+                
+                // Initialize OBA API with critical configuration
+                initializeObaApi(appContext);
+                
+                // Try to init region information
+                initializeObaRegion(appContext);
+                
+                Log.d(TAG, "Manual initialization completed");
+                return true;
             }
         } catch (Exception e) {
-            Log.d(TAG, "Error checking application state", e);
+            Log.e(TAG, "Error initializing app", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Initialize OBA API with minimal required configuration
+     */
+    private static void initializeObaApi(Context context) {
+        try {
+            // Get or generate app UUID
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            String uuid = prefs.getString(org.onebusaway.android.app.Application.APP_UID, null);
+            if (uuid == null) {
+                // Generate one
+                uuid = java.util.UUID.randomUUID().toString();
+                prefs.edit().putString(org.onebusaway.android.app.Application.APP_UID, uuid).apply();
+            }
+            
+            // Get app version
+            PackageManager pm = context.getPackageManager();
+            try {
+                PackageInfo appInfo = pm.getPackageInfo(context.getPackageName(), PackageManager.GET_META_DATA);
+                // Initialize OBA API with version and UUID
+                org.onebusaway.android.io.ObaApi.getDefaultContext().setAppInfo(appInfo.versionCode, uuid);
+                Log.d(TAG, "OBA API initialized with version " + appInfo.versionCode);
+            } catch (PackageManager.NameNotFoundException e) {
+                Log.e(TAG, "Could not get package info", e);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing OBA API", e);
+        }
+    }
+    
+    /**
+     * Initialize OBA region data
+     */
+    private static void initializeObaRegion(Context context) {
+        try {
+            // Read the region preference, look it up in the DB, then set the region
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            long id = prefs.getLong(context.getString(org.onebusaway.android.R.string.preference_key_region), -1);
+            if (id < 0) {
+                Log.d(TAG, "No region preference set");
+                return;
+            }
+            
+            // Get region from content provider
+            org.onebusaway.android.io.elements.ObaRegion region = 
+                    org.onebusaway.android.provider.ObaContract.Regions.get(context, (int) id);
+            if (region == null) {
+                Log.d(TAG, "Could not find region with ID " + id);
+                return;
+            }
+            
+            // Set the region for the API
+            org.onebusaway.android.io.ObaApi.getDefaultContext().setRegion(region);
+            Log.d(TAG, "Region set to " + region.getName());
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing OBA region", e);
         }
     }
     
@@ -166,50 +243,33 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
 
         // Set up the scrollable list for arrivals
-        boolean useScrollable = true; // Can be made configurable in the future
-        boolean isNarrow = isNarrowWidget(appWidgetManager, appWidgetId);
+        Log.d(TAG, "Setting up scrollable arrivals list");
         
-        if (useScrollable) {
-            Log.d(TAG, "Setting up scrollable arrivals list");
-            // Set up the intent that starts the ArrivalsWidgetListService, which provides the views for this collection
-            Intent intent = new Intent(context, ArrivalsWidgetListService.class);
-            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
-            intent.putExtra("stopId", getStopIdForWidget(context, appWidgetId));
-            intent.putExtra("isNarrow", isNarrow);
-            
-            // When intents are compared, the extras are ignored, so we need to put the widget id
-            // as data to make the intent unique
-            intent.setData(android.net.Uri.parse("widget://" + appWidgetId));
-            
-            // Set up the RemoteViews object to use a RemoteViews adapter
-            views.setRemoteAdapter(R.id.arrivals_list, intent);
-            
-            // Hide the arrivals container and show the ListView
-            views.setViewVisibility(R.id.arrivals_container, View.GONE);
-            views.setViewVisibility(R.id.arrivals_list, View.VISIBLE);
-            
-            // The empty view is displayed when the collection has no items
-            views.setEmptyView(R.id.arrivals_list, R.id.no_arrivals);
-            
-            // Set up the intent that will be used to open the OneBusAway app when clicked
-            Intent appIntent = new Intent(context, HomeActivity.class);
-            PendingIntent clickPendingIntent = PendingIntent.getActivity(
-                    context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            
-            // Set the item click template
-            views.setPendingIntentTemplate(R.id.arrivals_list, clickPendingIntent);
-        } else {
-            // Use the old non-scrollable container
-            views.setViewVisibility(R.id.arrivals_container, View.VISIBLE);
-            views.setViewVisibility(R.id.arrivals_list, View.GONE);
-        }
-
-        // Set up click intent for the widget to open the app
-        Intent appIntent = new Intent(context, HomeActivity.class);
-        appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent appPendingIntent = PendingIntent.getActivity(context, 0, appIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_layout, appPendingIntent);
+        // Set up the intent that starts the ArrivalsWidgetListService, which provides the views for this collection
+        Intent intent = new Intent(context, ArrivalsWidgetListService.class);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        intent.putExtra("stopId", getStopIdForWidget(context, appWidgetId));
+        intent.putExtra("isNarrow", isNarrowWidget(appWidgetManager, appWidgetId));
+        intent.putExtra("isFullWidth", isFullWidthWidget(appWidgetManager, appWidgetId));
+        intent.putExtra("sizeCategory", getWidgetSizeCategory(appWidgetManager, appWidgetId));
+        
+        // When intents are compared, the extras are ignored, so we need to put the widget id
+        // as data to make the intent unique
+        intent.setData(android.net.Uri.parse("widget://" + appWidgetId));
+        
+        // Set up the RemoteViews object to use a RemoteViews adapter
+        views.setRemoteAdapter(R.id.arrivals_list, intent);
+        
+        // Always ensure the ListView is visible and the legacy container is hidden
+        views.setViewVisibility(R.id.arrivals_container, View.GONE);
+        views.setViewVisibility(R.id.arrivals_list, View.VISIBLE);
+        
+        // The empty view is displayed when the collection has no items
+        views.setEmptyView(R.id.arrivals_list, R.id.no_arrivals);
+        
+        // Create an empty/null pending intent for the list items - this makes them non-clickable
+        PendingIntent nullIntent = null;
+        views.setPendingIntentTemplate(R.id.arrivals_list, nullIntent);
 
         // Set up settings intent (using header area)
         Intent settingsIntent = new Intent(context, FavoriteStopWidgetProvider.class);
@@ -253,7 +313,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             
             Log.d(TAG, "Widget UI updated with saved stop, requesting arrivals");
             
-            // Start a proactive loading strategy with multiple retries if needed
+            // Start a proactive loading strategy with minimal retries
             startProactiveLoading(context, stopId, stopName, appWidgetId);
         } else {
             // No saved stop, get the most frequently used favorite stop
@@ -289,7 +349,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                     // Notify the widget service that data changed to update the ListView
                     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
                     
-                    // Start a proactive loading strategy with multiple retries
+                    // Start a proactive loading strategy with minimal retries
                     startProactiveLoading(context, favoriteStop.getStopId(), favoriteStop.getStopName(), appWidgetId);
                 } else {
                     // No favorite stops - display default message
@@ -378,6 +438,8 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public static class StopSelectorActivity extends android.app.Activity implements OnStopSelectedListener {
         private int mAppWidgetId;
         private BottomSheetDialog mBottomSheetDialog;
+        private AppWidgetManager mAppWidgetManager;
+        private boolean mIsFinishing = false;
 
         @Override
         protected void onCreate(android.os.Bundle savedInstanceState) {
@@ -396,7 +458,12 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.d(TAG, "Got widget ID from intent: " + mAppWidgetId);
             } else {
                 Log.e(TAG, "No widget ID in intent");
+                finish();
+                return;
             }
+            
+            // Initialize widget manager - do this BEFORE showing bottom sheet
+            mAppWidgetManager = AppWidgetManager.getInstance(getApplicationContext());
             
             // Show the bottom sheet with favorite stops
             showStopSelector();
@@ -426,7 +493,7 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             // Set callback for when the dialog is dismissed
             mBottomSheetDialog.setOnDismissListener(dialog -> {
                 Log.d(TAG, "Bottom sheet dismissed");
-                finish();
+                finishSafely();
             });
             
             // Show the dialog
@@ -437,15 +504,59 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
             Log.d(TAG, "Bottom sheet expanded");
         }
+        
+        /**
+         * Finish the activity safely to prevent leaks
+         */
+        private void finishSafely() {
+            if (!isFinishing() && !mIsFinishing) {
+                mIsFinishing = true;
+                
+                // Make sure we clean up any ongoing operations with the AppWidgetManager
+                mAppWidgetManager = null;
+                
+                // Close the dialog first
+                if (mBottomSheetDialog != null && mBottomSheetDialog.isShowing()) {
+                    mBottomSheetDialog.dismiss();
+                    mBottomSheetDialog = null;
+                }
+                
+                // Finish the activity
+                finish();
+            }
+        }
+
+        @Override
+        protected void onPause() {
+            super.onPause();
+            // Clear references to the widget manager in onPause
+            // This helps prevent service connection leaks
+            mAppWidgetManager = null;
+        }
+        
+        @Override
+        protected void onStop() {
+            super.onStop();
+            // If activity is stopping, make sure we finish it completely
+            if (!isFinishing()) {
+                finishSafely();
+            }
+        }
 
         @Override
         protected void onDestroy() {
             Log.d(TAG, "StopSelectorActivity being destroyed");
+            
+            // Make sure we clear any references that could cause leaks
+            mAppWidgetManager = null;
+            
             // Make sure the dialog is dismissed when the activity is destroyed
             if (mBottomSheetDialog != null && mBottomSheetDialog.isShowing()) {
                 Log.d(TAG, "Dismissing bottom sheet dialog");
                 mBottomSheetDialog.dismiss();
+                mBottomSheetDialog = null;
             }
+            
             super.onDestroy();
         }
 
@@ -453,23 +564,21 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         public void onStopSelected(FavoriteStop stop) {
             Log.d(TAG, "Stop selected: " + stop.getStopName() + " (ID: " + stop.getStopId() + ")");
             
+            // Cache the values we need
+            int widgetId = mAppWidgetId;
+            String stopId = stop.getStopId();
+            String stopName = stop.getStopName();
+            
             // Save the selected stop
-            saveStopForWidget(this, mAppWidgetId, stop.getStopId(), stop.getStopName());
-            Log.d(TAG, "Stop saved for widget " + mAppWidgetId);
+            saveStopForWidget(getApplicationContext(), widgetId, stopId, stopName);
+            Log.d(TAG, "Stop saved for widget " + widgetId);
             
-            // Request an update for the widget with the new stop
+            // Request an update for the widget with the new stop - use application context
             Log.d(TAG, "Requesting update with selected stop");
-            ArrivalsWidgetService.requestUpdate(this, stop.getStopId(), stop.getStopName(), mAppWidgetId);
+            ArrivalsWidgetService.requestUpdate(getApplicationContext(), stopId, stopName, widgetId);
             
-            // Close the dialog
-            if (mBottomSheetDialog != null) {
-                Log.d(TAG, "Dismissing dialog after selection");
-                mBottomSheetDialog.dismiss();
-            }
-            
-            // Close the activity
-            Log.d(TAG, "Finishing activity after selection");
-            finish();
+            // Finish safely to avoid leaks
+            finishSafely();
         }
     }
 
@@ -507,70 +616,99 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     }
     
     /**
-     * Start a proactive loading strategy with multiple retry attempts.
-     * This ensures the widget loads data even if initial attempts fail
+     * Start a proactive loading strategy with minimal retries.
+     * This ensures the widget loads data without excessive API calls.
      */
     private void startProactiveLoading(Context context, String stopId, String stopName, int appWidgetId) {
-        // Create a background thread for loading with exponential backoff
-        new Thread(() -> {
+        // Use a more efficient executor instead of raw threads
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        
+        executor.submit(() -> {
             try {
                 // First attempt - immediate
                 Log.d(TAG, "First attempt to load arrivals data");
-                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                 
-                // Notify the adapter about data change
-                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
-                
-                // Wait and then do a second attempt after 3 seconds
-                Thread.sleep(3000);
-                
-                // Check if we already have the widget preferences
-                SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
-                String currentStopId = prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
-                
-                // If the stopId has changed or been removed, abort further retries
-                if (currentStopId == null || !currentStopId.equals(stopId)) {
-                    Log.d(TAG, "Stop ID changed or removed, aborting retry sequence");
+                // Notify the adapter about data change only if widget still exists
+                if (isWidgetValid(context, appWidgetId, stopId)) {
+                    AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                } else {
+                    Log.d(TAG, "Widget no longer valid, skipping notification");
                     return;
                 }
                 
+                // Wait for a shorter time before second attempt - 2 seconds is enough
+                Thread.sleep(2000);
+                
+                // Validate the widget and stop ID still exist
+                if (!isWidgetValid(context, appWidgetId, stopId)) {
+                    Log.d(TAG, "Widget or stop ID changed, aborting retry sequence");
+                    return;
+                }
+                
+                // Second and final attempt - most data should be loaded by now
                 Log.d(TAG, "Second attempt to load arrivals data");
-                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                 
-                // Notify the adapter about data change
-                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
-                
-                // Wait and then do a second attempt after 5 seconds (8 seconds total)
-                Thread.sleep(5000);
-                
-                // Check again if the stopId is still valid
-                currentStopId = prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
-                if (currentStopId == null || !currentStopId.equals(stopId)) {
-                    Log.d(TAG, "Stop ID changed or removed, aborting final retry");
-                    return;
+                // Notify the adapter about data change only if widget still exists
+                if (isWidgetValid(context, appWidgetId, stopId)) {
+                    AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
                 }
                 
-                Log.d(TAG, "Final attempt to load arrivals data");
-                ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
-                
-                // Notify the adapter about data change
-                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
-                
-                // After all loading attempts, schedule periodic updates if enabled
+                // Schedule periodic updates if enabled
                 scheduleWidgetUpdate(context, appWidgetId);
-            } catch (InterruptedException e) {
-                Log.e(TAG, "Proactive loading interrupted", e);
             } catch (Exception e) {
                 Log.e(TAG, "Error during proactive loading", e);
-                // Try one more time even if we hit an error
                 try {
-                    ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                    // One final attempt if there was an error
+                    ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                     scheduleWidgetUpdate(context, appWidgetId);
                 } catch (Exception ex) {
                     Log.e(TAG, "Final attempt failed", ex);
                 }
+            } finally {
+                // Always shut down the executor to avoid leaking resources
+                executor.shutdown();
             }
-        }).start();
+        });
+    }
+    
+    /**
+     * Check if the widget is still valid with the same stop ID
+     */
+    private boolean isWidgetValid(Context context, int appWidgetId, String stopId) {
+        try {
+            // Check if the widget still exists
+            AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+            int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, FavoriteStopWidgetProvider.class));
+            boolean widgetExists = false;
+            
+            for (int id : appWidgetIds) {
+                if (id == appWidgetId) {
+                    widgetExists = true;
+                    break;
+                }
+            }
+            
+            if (!widgetExists) {
+                Log.d(TAG, "Widget " + appWidgetId + " no longer exists");
+                return false;
+            }
+            
+            // Check if the stop ID is still the same
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, 0);
+            String currentStopId = prefs.getString(PREF_STOP_ID_PREFIX + appWidgetId, null);
+            
+            if (currentStopId == null || !currentStopId.equals(stopId)) {
+                Log.d(TAG, "Stop ID changed or removed");
+                return false;
+            }
+            
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking widget validity", e);
+            return false;
+        }
     }
     
     /**
@@ -660,5 +798,41 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             return minWidth < 250;
         }
         return false;
+    }
+
+    /**
+     * Determine if the widget is in a full width layout
+     */
+    public static boolean isFullWidthWidget(AppWidgetManager appWidgetManager, int appWidgetId) {
+        Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
+        if (options != null) {
+            int minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+            
+            // Consider the widget "full width" if it's more than 500dp wide
+            return minWidth > 500;
+        }
+        return false;
+    }
+
+    /**
+     * Get the widget size category
+     * @return 0 for small, 1 for medium, 2 for large, 3 for full-width
+     */
+    public static int getWidgetSizeCategory(AppWidgetManager appWidgetManager, int appWidgetId) {
+        Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
+        if (options != null) {
+            int minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+            
+            if (minWidth < 250) {
+                return 0; // Small
+            } else if (minWidth < 320) {
+                return 1; // Medium
+            } else if (minWidth < 500) {
+                return 2; // Large
+            } else {
+                return 3; // Full-width
+            }
+        }
+        return 1; // Default to medium if we can't determine
     }
 } 
