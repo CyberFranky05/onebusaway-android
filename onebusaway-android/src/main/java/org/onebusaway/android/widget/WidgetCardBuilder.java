@@ -186,6 +186,9 @@ public class WidgetCardBuilder {
             cardView.setTextViewText(R.id.eta, etaText);
             cardView.setTextColor(R.id.eta, statusColor);
             
+            // Also set the same color for the "min" label to match the number
+            cardView.setTextColor(R.id.eta_min, statusColor);
+            
             // Show or hide the "min" label based on the type of arrival
             if (minutes < 60 && minutes > 0) {
                 // Show "min" for normal minute-based arrivals

@@ -48,32 +48,38 @@
             android:maxLines="1"
             tools:text="West to Fort Totten" />
 
-        <!-- Arrival time -->
-        <TextView
-            android:id="@+id/status"
+        <!-- Arrival time with status pill -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:layout_marginTop="2dp"
-            android:textColor="#888888"
-            android:textSize="12sp"
-            tools:text="Arriving at 4:51 PM" />
+            android:gravity="center_vertical">
 
-        <!-- Status pill (will be hidden most of the time) -->
-        <TextView
-            android:id="@+id/status_pill"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
-            android:background="@drawable/status_pill_background"
-            android:textColor="@android:color/white"
-            android:textSize="12sp"
-            android:visibility="gone"
-            tools:text="1 min early"
-            tools:visibility="gone" />
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#888888"
+                android:textSize="12sp"
+                tools:text="Arriving at 4:51 PM" />
+
+            <TextView
+                android:id="@+id/status_pill"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp"
+                android:background="@drawable/status_pill_background"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:visibility="gone"
+                tools:text="1 min early"
+                tools:visibility="visible" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- ETA container with number and "min" label -->
@@ -108,5 +114,16 @@
             android:textColor="#888888" />
     </LinearLayout>
 
-
+    <!-- Status indicator dot (usually hidden) -->
+    <ImageView
+        android:id="@+id/status_indicator"
+        android:layout_width="6dp"
+        android:layout_height="6dp"
+        android:layout_alignParentEnd="true"
+        android:layout_below="@id/eta_container"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="3dp"
+        android:visibility="gone"
+        tools:visibility="gone"
+        tools:src="@drawable/status_indicator_on_time" />
 </RelativeLayout> 
