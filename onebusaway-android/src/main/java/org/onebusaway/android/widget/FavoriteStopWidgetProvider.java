@@ -165,6 +165,45 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         // Create RemoteViews for the layout
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
 
+        // Set up the scrollable list for arrivals
+        boolean useScrollable = true; // Can be made configurable in the future
+        boolean isNarrow = isNarrowWidget(appWidgetManager, appWidgetId);
+        
+        if (useScrollable) {
+            Log.d(TAG, "Setting up scrollable arrivals list");
+            // Set up the intent that starts the ArrivalsWidgetListService, which provides the views for this collection
+            Intent intent = new Intent(context, ArrivalsWidgetListService.class);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+            intent.putExtra("stopId", getStopIdForWidget(context, appWidgetId));
+            intent.putExtra("isNarrow", isNarrow);
+            
+            // When intents are compared, the extras are ignored, so we need to put the widget id
+            // as data to make the intent unique
+            intent.setData(android.net.Uri.parse("widget://" + appWidgetId));
+            
+            // Set up the RemoteViews object to use a RemoteViews adapter
+            views.setRemoteAdapter(R.id.arrivals_list, intent);
+            
+            // Hide the arrivals container and show the ListView
+            views.setViewVisibility(R.id.arrivals_container, View.GONE);
+            views.setViewVisibility(R.id.arrivals_list, View.VISIBLE);
+            
+            // The empty view is displayed when the collection has no items
+            views.setEmptyView(R.id.arrivals_list, R.id.no_arrivals);
+            
+            // Set up the intent that will be used to open the OneBusAway app when clicked
+            Intent appIntent = new Intent(context, HomeActivity.class);
+            PendingIntent clickPendingIntent = PendingIntent.getActivity(
+                    context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            
+            // Set the item click template
+            views.setPendingIntentTemplate(R.id.arrivals_list, clickPendingIntent);
+        } else {
+            // Use the old non-scrollable container
+            views.setViewVisibility(R.id.arrivals_container, View.VISIBLE);
+            views.setViewVisibility(R.id.arrivals_list, View.GONE);
+        }
+
         // Set up click intent for the widget to open the app
         Intent appIntent = new Intent(context, HomeActivity.class);
         appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

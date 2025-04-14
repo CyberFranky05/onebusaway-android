@@ -95,13 +95,22 @@
             android:textColor="@android:color/black"
             android:textSize="16sp" />
 
-        <!-- LinearLayout for arrival cards with dividers -->
+        <!-- Scrollable ListView for arrival cards -->
+        <ListView
+            android:id="@+id/arrivals_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@drawable/list_divider"
+            android:dividerHeight="1dp" />
+            
+        <!-- LinearLayout for arrival cards (legacy, will be removed) -->
         <LinearLayout
             android:id="@+id/arrivals_container"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:divider="@drawable/list_divider"
-            android:showDividers="middle" />
+            android:showDividers="middle"
+            android:visibility="gone" />
     </FrameLayout>
 </RelativeLayout> 

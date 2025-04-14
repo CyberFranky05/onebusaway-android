@@ -367,16 +367,28 @@
                 android:value="org.onebusaway.android.ui.PreferencesActivity"/>
         </activity>
 
-        <!-- Widget Provider -->
-        <receiver
+        <!-- Widget provider -->
+        <receiver 
             android:name=".widget.FavoriteStopWidgetProvider"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                       android:resource="@xml/favorite_stop_widget_info"/>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/favorite_stop_widget_info" />
         </receiver>
+
+        <!-- Widget list service for scrollable arrival data -->
+        <service
+            android:name=".widget.ArrivalsWidgetListService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+            
+        <!-- Widget arrivals data service -->
+        <service
+            android:name=".widget.ArrivalsWidgetService"
+            android:exported="false" />
 
         <!-- Activity for widget settings -->
         <activity
@@ -397,14 +409,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-
-        <!-- Service for widget arrivals data -->
-        <service
-            android:name=".widget.ArrivalsWidgetService"
-            android:enabled="true"
-            android:exported="false"
-            android:directBootAware="true"
-            android:process=":widget_service" />
 
         <!-- Opt-out of June 2018 Android Maps styling with pin POI icons - see #891 -->
         <meta-data android:name="com.google.android.gms.maps.API_OPTIONS" android:value="B3H9HE845CFHYG"/>
