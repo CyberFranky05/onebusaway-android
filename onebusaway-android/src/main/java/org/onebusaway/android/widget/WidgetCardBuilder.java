@@ -23,6 +23,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
 import android.util.TypedValue;
+import android.appwidget.AppWidgetManager;
 
 import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
@@ -59,8 +60,9 @@ public class WidgetCardBuilder {
      * @param context Application context
      * @param views RemoteViews to update
      * @param arrivals Array of arrival information
+     * @param appWidgetId The widget ID to build for
      */
-    public static void buildArrivalCards(Context context, RemoteViews views, ObaArrivalInfo[] arrivals) {
+    public static void buildArrivalCards(Context context, RemoteViews views, ObaArrivalInfo[] arrivals, int appWidgetId) {
         // Clear existing cards
         views.removeAllViews(R.id.arrivals_container);
         
@@ -76,8 +78,13 @@ public class WidgetCardBuilder {
         views.setViewVisibility(R.id.no_arrivals, View.GONE);
         views.setViewVisibility(R.id.arrivals_container, View.VISIBLE);
         
-        // Limit number of cards to display
-        int displayCount = Math.min(arrivals.length, MAX_CARDS);
+        // Check if we're in a narrow widget
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+        boolean isNarrow = FavoriteStopWidgetProvider.isNarrowWidget(appWidgetManager, appWidgetId);
+        
+        // Limit number of cards to display (fewer for narrow widgets)
+        int maxCards = isNarrow ? 4 : MAX_CARDS;
+        int displayCount = Math.min(arrivals.length, maxCards);
         
         // Create a card for each arrival
         for (int i = 0; i < displayCount; i++) {
@@ -111,6 +118,9 @@ public class WidgetCardBuilder {
             String headsign = !TextUtils.isEmpty(arrival.getHeadsign()) ?
                 arrival.getHeadsign() : "Unknown destination";
             cardView.setTextViewText(R.id.destination, headsign);
+            
+            // If in narrow mode, make the arrival text shorter
+            boolean useShortFormat = isNarrow;
             
             // Calculate arrival time and status
             long eta = arrival.getPredictedArrivalTime();
@@ -181,7 +191,8 @@ public class WidgetCardBuilder {
             }
             
             // Set status indicator (small dot below minutes)
-
+            cardView.setImageViewResource(R.id.status_indicator, statusIndicator);
+            
             // Set ETA text and color - this is the large number on the right
             cardView.setTextViewText(R.id.eta, etaText);
             cardView.setTextColor(R.id.eta, statusColor);
@@ -199,7 +210,18 @@ public class WidgetCardBuilder {
             }
             
             // Format detailed status text (time of arrival)
-            String arrivalTimeText = "Arriving at " + TIME_FORMAT.format(new Date(eta));
+            String arrivalTimeText;
+            if (useShortFormat) {
+                // In narrow widgets, just show the time with no explanatory text
+                arrivalTimeText = TIME_FORMAT.format(new Date(eta));
+                // Hide status text completely in very narrow widgets
+                if (appWidgetManager.getAppWidgetOptions(appWidgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) < 180) {
+                    cardView.setViewVisibility(R.id.status, View.GONE);
+                }
+            } else {
+                // Full format for normal width widgets
+                arrivalTimeText = "Arriving at " + TIME_FORMAT.format(new Date(eta));
+            }
             cardView.setTextViewText(R.id.status, arrivalTimeText);
             
             // Create status pill for early/delay if needed
@@ -214,11 +236,25 @@ public class WidgetCardBuilder {
                 
                 if ("EARLY".equals(arrivalStatus) || deviation < -180000) {
                     int earlyMins = Math.abs((int)(deviation / 60000));
-                    pillText = earlyMins + " min early";
+                    
+                    // Use detailed text for wider widgets, compact for narrow
+                    if (useShortFormat) {
+                        pillText = "early";
+                    } else {
+                        pillText = earlyMins + " min early";
+                    }
+                    
                     pillColor = COLOR_DELAYED; // We use red for early too
                 } else {
                     int delayMins = (int)(deviation / 60000);
-                    pillText = delayMins + " min delay";
+                    
+                    // Use detailed text for wider widgets, compact for narrow
+                    if (useShortFormat) {
+                        pillText = "delay";
+                    } else {
+                        pillText = delayMins + " min delay";
+                    }
+                    
                     pillColor = COLOR_DELAYED;
                 }
                 
@@ -227,8 +263,6 @@ public class WidgetCardBuilder {
             } else {
                 cardView.setViewVisibility(R.id.status_pill, View.GONE);
             }
-            
-
             
             // Add the card to the container
             views.addView(R.id.arrivals_container, cardView);
@@ -241,5 +275,12 @@ public class WidgetCardBuilder {
                     " more arrival" + (arrivals.length - displayCount > 1 ? "s" : ""));
             views.addView(R.id.arrivals_container, moreView);
         }
+    }
+    
+    /**
+     * Compatibility method for calling with the old parameter list
+     */
+    public static void buildArrivalCards(Context context, RemoteViews views, ObaArrivalInfo[] arrivals) {
+        buildArrivalCards(context, views, arrivals, AppWidgetManager.INVALID_APPWIDGET_ID);
     }
 } 

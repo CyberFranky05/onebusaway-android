@@ -96,20 +96,11 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             int appWidgetId, Bundle newOptions) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions);
         
-        // Log the new widget size
+        // Log new widget size
         logWidgetSize(context, appWidgetManager, appWidgetId);
         
         // Update the widget with the new size
-        Log.d(TAG, "Widget " + appWidgetId + " size changed - updating layout");
         updateWidget(context, appWidgetManager, appWidgetId);
-        
-        // Also refresh arrivals data when widget is resized
-        String stopId = getStopIdForWidget(context, appWidgetId);
-        String stopName = getStopNameForWidget(context, appWidgetId);
-        if (stopId != null && stopName != null) {
-            Log.d(TAG, "Requesting arrivals refresh after resize");
-            ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
-        }
     }
     
     @Override
@@ -597,5 +588,19 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         PendingIntent pendingIntent = PendingIntent.getBroadcast(context, appWidgetId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         alarmManager.cancel(pendingIntent);
+    }
+
+    /**
+     * Determine if the widget is in a narrow layout
+     */
+    public static boolean isNarrowWidget(AppWidgetManager appWidgetManager, int appWidgetId) {
+        Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
+        if (options != null) {
+            int minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+            
+            // Consider the widget "narrow" if it's less than 250dp wide
+            return minWidth < 250;
+        }
+        return false;
     }
 } 

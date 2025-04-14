@@ -4,42 +4,42 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@android:color/white"
-    android:padding="8dp">
+    android:padding="6dp">
 
-    <!-- Route badge -->
+    <!-- Route badge - slightly smaller on narrow screens -->
     <TextView
         android:id="@+id/route_name"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentStart="true"
         android:layout_centerVertical="true"
-        android:minWidth="48dp"
+        android:minWidth="40dp"
         android:gravity="center"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
         android:textColor="@android:color/white"
-        android:textSize="18sp"
+        android:textSize="16sp"
         android:textStyle="bold"
         tools:text="F6"
         tools:background="#1976D2" />
 
-    <!-- Arrival info -->
+    <!-- Arrival info - with better space optimization -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_toEndOf="@id/route_name"
         android:layout_toStartOf="@id/eta_container"
         android:layout_centerVertical="true"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
         android:orientation="vertical">
 
-        <!-- Destination -->
+        <!-- Destination - will ellipsize when needed -->
         <TextView
             android:id="@+id/destination"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#000000"
             android:textSize="14sp"
@@ -48,41 +48,45 @@
             android:maxLines="1"
             tools:text="West to Fort Totten" />
 
-        <!-- Arrival time with status pill -->
+        <!-- Arrival time - more compact for smaller screens -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="2dp"
-            android:gravity="center_vertical">
+            android:layout_marginTop="1dp">
 
+            <!-- Status text - truncated if needed -->
             <TextView
                 android:id="@+id/status"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:textColor="#888888"
-                android:textSize="12sp"
+                android:textSize="11sp"
+                android:ellipsize="end"
+                android:maxLines="1"
                 tools:text="Arriving at 4:51 PM" />
 
+            <!-- Status pill - compact size -->
             <TextView
                 android:id="@+id/status_pill"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
+                android:layout_marginStart="4dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
                 android:paddingTop="1dp"
                 android:paddingBottom="1dp"
                 android:background="@drawable/status_pill_background"
                 android:textColor="@android:color/white"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:visibility="gone"
-                tools:text="1 min early"
+                tools:text="early"
                 tools:visibility="visible" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ETA container with number and "min" label -->
+    <!-- ETA container - more compact for smaller screens -->
     <LinearLayout
         android:id="@+id/eta_container"
         android:layout_width="wrap_content"
@@ -90,39 +94,39 @@
         android:layout_alignParentEnd="true"
         android:layout_centerVertical="true"
         android:orientation="horizontal"
-        android:gravity="bottom|end">
+        android:gravity="center_vertical|end">
 
-        <!-- ETA number -->
+        <!-- ETA number - slightly smaller for narrow screens -->
         <TextView
             android:id="@+id/eta"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="28sp"
+            android:textSize="24sp"
             android:textStyle="bold"
             tools:text="8"
             tools:textColor="#008000" />
 
-        <!-- "min" label -->
+        <!-- "min" label - smaller on narrow screens -->
         <TextView
             android:id="@+id/eta_min"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="2dp"
             android:layout_gravity="bottom"
             android:text="min"
-            android:textSize="16sp"
-            android:textColor="#888888" />
+            android:textSize="14sp"
+            tools:textColor="#008000" />
     </LinearLayout>
 
-    <!-- Status indicator dot (usually hidden) -->
+    <!-- Status indicator dot - hidden by default -->
     <ImageView
         android:id="@+id/status_indicator"
-        android:layout_width="6dp"
-        android:layout_height="6dp"
+        android:layout_width="5dp"
+        android:layout_height="5dp"
         android:layout_alignParentEnd="true"
         android:layout_below="@id/eta_container"
-        android:layout_marginTop="2dp"
-        android:layout_marginEnd="3dp"
+        android:layout_marginTop="1dp"
+        android:layout_marginEnd="2dp"
         android:visibility="gone"
         tools:visibility="gone"
         tools:src="@drawable/status_indicator_on_time" />

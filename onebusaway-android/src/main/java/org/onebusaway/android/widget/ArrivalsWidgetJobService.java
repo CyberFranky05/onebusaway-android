@@ -218,7 +218,7 @@ public class ArrivalsWidgetJobService extends JobService {
                 // Format and add arrivals
                 if (arrivals != null && arrivals.length > 0) {
                     // Use the new card builder to create card-based UI
-                    WidgetCardBuilder.buildArrivalCards(mContext, views, arrivals);
+                    WidgetCardBuilder.buildArrivalCards(mContext, views, arrivals, mWidgetId);
                     Log.d(TAG, "Created arrival cards for " + arrivals.length + " arrivals");
                 } else {
                     views.setViewVisibility(R.id.no_arrivals, View.VISIBLE);

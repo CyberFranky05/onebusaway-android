@@ -196,7 +196,7 @@ public class ArrivalsWidgetService extends IntentService {
                     views.setTextViewText(R.id.no_arrivals, "No upcoming arrivals at this time.");
                 } else {
                     // Use the WidgetCardBuilder to create card-based UI
-                    WidgetCardBuilder.buildArrivalCards(this, views, arrivals);
+                    WidgetCardBuilder.buildArrivalCards(this, views, arrivals, widgetId);
                     Log.d(TAG, "Created arrival cards for " + arrivalsCount + " arrivals");
                 }
             } catch (Exception e) {
