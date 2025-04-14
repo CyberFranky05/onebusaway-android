@@ -181,11 +181,19 @@ public class WidgetCardBuilder {
             }
             
             // Set status indicator (small dot below minutes)
-            cardView.setImageViewResource(R.id.status_indicator, statusIndicator);
-            
+
             // Set ETA text and color - this is the large number on the right
             cardView.setTextViewText(R.id.eta, etaText);
             cardView.setTextColor(R.id.eta, statusColor);
+            
+            // Show or hide the "min" label based on the type of arrival
+            if (minutes < 60 && minutes > 0) {
+                // Show "min" for normal minute-based arrivals
+                cardView.setViewVisibility(R.id.eta_min, View.VISIBLE);
+            } else {
+                // Hide for "now" or clock time displays
+                cardView.setViewVisibility(R.id.eta_min, View.GONE);
+            }
             
             // Format detailed status text (time of arrival)
             String arrivalTimeText = "Arriving at " + TIME_FORMAT.format(new Date(eta));
@@ -217,12 +225,7 @@ public class WidgetCardBuilder {
                 cardView.setViewVisibility(R.id.status_pill, View.GONE);
             }
             
-            // Show the status indicator dot for real-time data
-            if (isPredicted) {
-                cardView.setViewVisibility(R.id.status_indicator, View.VISIBLE);
-            } else {
-                cardView.setViewVisibility(R.id.status_indicator, View.GONE);
-            }
+
             
             // Add the card to the container
             views.addView(R.id.arrivals_container, cardView);

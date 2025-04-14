@@ -22,52 +22,31 @@
         android:textColor="@android:color/white"
         android:textSize="18sp"
         android:textStyle="bold"
-        tools:text="L2"
-        tools:background="#A0A0A0" />
+        tools:text="F6"
+        tools:background="#1976D2" />
 
     <!-- Arrival info -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_toEndOf="@id/route_name"
-        android:layout_toStartOf="@id/eta"
+        android:layout_toStartOf="@id/eta_container"
         android:layout_centerVertical="true"
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
         android:orientation="vertical">
 
-        <!-- Destination with status pill -->
-        <LinearLayout
+        <!-- Destination -->
+        <TextView
+            android:id="@+id/destination"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/destination"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#000000"
-                android:textSize="14sp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                tools:text="North to Chevy Chase Circle" />
-
-            <TextView
-                android:id="@+id/status_pill"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
-                android:background="@drawable/status_pill_background"
-                android:textColor="@android:color/white"
-                android:textSize="12sp"
-                tools:text="1 min early"
-                tools:visibility="visible" />
-        </LinearLayout>
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:ellipsize="end"
+            android:maxLines="1"
+            tools:text="West to Fort Totten" />
 
         <!-- Arrival time -->
         <TextView
@@ -77,44 +56,57 @@
             android:layout_marginTop="2dp"
             android:textColor="#888888"
             android:textSize="12sp"
-            tools:text="Arriving at 4:57 PM" />
+            tools:text="Arriving at 4:51 PM" />
+
+        <!-- Status pill (will be hidden most of the time) -->
+        <TextView
+            android:id="@+id/status_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/status_pill_background"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="1 min early"
+            tools:visibility="gone" />
     </LinearLayout>
 
-    <!-- ETA -->
-    <TextView
-        android:id="@+id/eta"
+    <!-- ETA container with number and "min" label -->
+    <LinearLayout
+        android:id="@+id/eta_container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
         android:layout_centerVertical="true"
-        android:minWidth="36dp"
-        android:gravity="end"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        tools:text="7"
-        tools:textColor="#D32F2F" />
+        android:orientation="horizontal"
+        android:gravity="bottom|end">
 
-    <!-- Minutes label -->
-    <TextView
-        android:id="@+id/eta_min"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignBaseline="@id/eta"
-        android:layout_toEndOf="@id/eta"
-        android:layout_marginStart="2dp"
-        android:text="min"
-        android:textSize="12sp"
-        android:textColor="#888888" />
+        <!-- ETA number -->
+        <TextView
+            android:id="@+id/eta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            tools:text="8"
+            tools:textColor="#008000" />
 
-    <!-- Status indicator dot (hidden by default) -->
-    <ImageView
-        android:id="@+id/status_indicator"
-        android:layout_width="6dp"
-        android:layout_height="6dp"
-        android:layout_alignEnd="@id/eta_min"
-        android:layout_below="@id/eta_min"
-        android:layout_marginTop="-6dp"
-        android:visibility="gone"
-        tools:visibility="visible"
-        tools:src="@drawable/status_indicator_on_time" />
+        <!-- "min" label -->
+        <TextView
+            android:id="@+id/eta_min"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_gravity="bottom"
+            android:text="min"
+            android:textSize="16sp"
+            android:textColor="#888888" />
+    </LinearLayout>
+
+
 </RelativeLayout> 
