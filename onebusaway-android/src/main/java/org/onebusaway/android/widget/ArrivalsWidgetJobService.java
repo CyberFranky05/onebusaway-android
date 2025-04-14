@@ -232,6 +232,10 @@ public class ArrivalsWidgetJobService extends JobService {
                 // Update the widget
                 appWidgetManager.updateAppWidget(mWidgetId, views);
                 
+                // Notify the list adapter that the data has changed
+                appWidgetManager.notifyAppWidgetViewDataChanged(mWidgetId, R.id.arrivals_list);
+                
+                Log.d(TAG, "Widget updated successfully with arrivals and list notified");
             } catch (Exception e) {
                 Log.e(TAG, "Error updating widget with arrivals", e);
                 updateWidgetWithError();

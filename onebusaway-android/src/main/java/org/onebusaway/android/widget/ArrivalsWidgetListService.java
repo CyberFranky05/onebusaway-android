@@ -23,6 +23,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
+import android.appwidget.AppWidgetManager;
 
 import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
@@ -67,7 +68,7 @@ public class ArrivalsWidgetListService extends RemoteViewsService {
 
         public ArrivalsRemoteViewsFactory(Context context, Intent intent) {
             mContext = context;
-            mWidgetId = intent.getIntExtra("appWidgetId", -1);
+            mWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
             mStopId = intent.getStringExtra("stopId");
             mIsNarrow = intent.getBooleanExtra("isNarrow", false);
             Log.d(TAG, "Created factory for widget ID: " + mWidgetId + ", stop ID: " + mStopId);

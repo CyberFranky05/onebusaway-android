@@ -217,6 +217,19 @@ public class ArrivalsWidgetService extends IntentService {
                 Log.e(TAG, "Error updating widget", e);
             }
 
+            // Update widget with the new views
+            try {
+                // Update the widget UI
+                appWidgetManager.updateAppWidget(widgetId, views);
+                
+                // Notify the list adapter that the data has changed
+                appWidgetManager.notifyAppWidgetViewDataChanged(widgetId, R.id.arrivals_list);
+                
+                Log.d(TAG, "Widget updated successfully with arrival cards and list notified");
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating widget", e);
+            }
+
         } catch (Exception e) {
             Log.e(TAG, "Error fetching arrivals", e);
             views.setTextViewText(R.id.direction, "Error getting arrivals");

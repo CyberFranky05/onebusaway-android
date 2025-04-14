@@ -286,6 +286,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                     // Update the widget right away
                     appWidgetManager.updateAppWidget(appWidgetId, views);
                     
+                    // Notify the widget service that data changed to update the ListView
+                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                    
                     // Start a proactive loading strategy with multiple retries
                     startProactiveLoading(context, favoriteStop.getStopId(), favoriteStop.getStopName(), appWidgetId);
                 } else {
@@ -340,8 +343,15 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         prefs.putString(PREF_STOP_NAME_PREFIX + appWidgetId, stopName);
         prefs.apply();
         
+        Log.d(TAG, "Saved stop for widget " + appWidgetId + ": " + stopId + " (" + stopName + ")");
+        
         // Update the widget to reflect the changes
         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+        
+        // Notify the widget that the data has changed to refresh the list view
+        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+        
+        // Update the widget UI
         FavoriteStopWidgetProvider provider = new FavoriteStopWidgetProvider();
         provider.updateWidget(context, appWidgetManager, appWidgetId);
     }
@@ -508,6 +518,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.d(TAG, "First attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
                 
+                // Notify the adapter about data change
+                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                
                 // Wait and then do a second attempt after 3 seconds
                 Thread.sleep(3000);
                 
@@ -524,7 +537,10 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.d(TAG, "Second attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
                 
-                // Final attempt after another 5 seconds (8 seconds total)
+                // Notify the adapter about data change
+                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                
+                // Wait and then do a second attempt after 5 seconds (8 seconds total)
                 Thread.sleep(5000);
                 
                 // Check again if the stopId is still valid
@@ -536,6 +552,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 
                 Log.d(TAG, "Final attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context, stopId, stopName, appWidgetId);
+                
+                // Notify the adapter about data change
+                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
                 
                 // After all loading attempts, schedule periodic updates if enabled
                 scheduleWidgetUpdate(context, appWidgetId);
