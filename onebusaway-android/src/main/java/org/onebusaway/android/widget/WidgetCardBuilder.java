@@ -22,6 +22,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
+import android.util.TypedValue;
 
 import org.onebusaway.android.R;
 import org.onebusaway.android.io.elements.ObaArrivalInfo;
@@ -101,9 +102,6 @@ public class WidgetCardBuilder {
                 
                 // Set text color to white for contrast
                 cardView.setTextColor(R.id.route_name, Color.WHITE);
-                
-                // Set ETA text color to match route
-                cardView.setTextColor(R.id.eta, routeColor);
             } catch (Exception e) {
                 Log.e(TAG, "Error setting route color", e);
                 // Use default colors if there's an error
@@ -137,7 +135,7 @@ public class WidgetCardBuilder {
             long now = System.currentTimeMillis();
             long minutes = (eta - now) / 60000;
             
-            // Format ETA text
+            // Format ETA text - just the number for minutes like in the app UI
             String etaText;
             int statusColor;
             int statusIndicator;
@@ -148,8 +146,8 @@ public class WidgetCardBuilder {
                 statusColor = COLOR_NOW;
                 statusIndicator = INDICATOR_NOW;
             } else if (minutes < 60) {
-                // Arriving within the hour
-                etaText = minutes + " min";
+                // Arriving within the hour - just the number for minutes
+                etaText = String.valueOf(minutes);
                 
                 // Determine status color based on prediction and deviation
                 if (!isPredicted) {
@@ -182,30 +180,49 @@ public class WidgetCardBuilder {
                 }
             }
             
-            // Set status indicator
+            // Set status indicator (small dot below minutes)
             cardView.setImageViewResource(R.id.status_indicator, statusIndicator);
             
-            // Set ETA text and color
+            // Set ETA text and color - this is the large number on the right
             cardView.setTextViewText(R.id.eta, etaText);
             cardView.setTextColor(R.id.eta, statusColor);
             
-            // Format detailed status text
-            String arrivalTimeText = TIME_FORMAT.format(new Date(eta));
-            String statusPrefix = isPredicted ? "Est" : "Sched";
+            // Format detailed status text (time of arrival)
+            String arrivalTimeText = "Arriving at " + TIME_FORMAT.format(new Date(eta));
+            cardView.setTextViewText(R.id.status, arrivalTimeText);
             
-            // Add status information for clarity
-            String statusSuffix = "";
-            if (isPredicted) {
+            // Create status pill for early/delay if needed
+            if (isPredicted && (
+                    "EARLY".equals(arrivalStatus) || deviation < -180000 ||
+                    "DELAYED".equals(arrivalStatus) || deviation > 300000)) {
+                
+                cardView.setViewVisibility(R.id.status_pill, View.VISIBLE);
+                
+                String pillText;
+                int pillColor;
+                
                 if ("EARLY".equals(arrivalStatus) || deviation < -180000) {
-                    statusSuffix = " (early)";
-                } else if ("DELAYED".equals(arrivalStatus) || deviation > 300000) {
-                    statusSuffix = " (delayed)";
+                    int earlyMins = Math.abs((int)(deviation / 60000));
+                    pillText = earlyMins + " min early";
+                    pillColor = COLOR_DELAYED; // We use red for early too
+                } else {
+                    int delayMins = (int)(deviation / 60000);
+                    pillText = delayMins + " min delay";
+                    pillColor = COLOR_DELAYED;
                 }
+                
+                cardView.setTextViewText(R.id.status_pill, pillText);
+                cardView.setInt(R.id.status_pill, "setBackgroundColor", pillColor);
+            } else {
+                cardView.setViewVisibility(R.id.status_pill, View.GONE);
             }
             
-            String statusText = statusPrefix + ": " + etaText + statusSuffix + " (" + arrivalTimeText + ")";
-            cardView.setTextViewText(R.id.status, statusText);
-            cardView.setTextColor(R.id.status, Color.parseColor("#707070")); // Keep status text gray
+            // Show the status indicator dot for real-time data
+            if (isPredicted) {
+                cardView.setViewVisibility(R.id.status_indicator, View.VISIBLE);
+            } else {
+                cardView.setViewVisibility(R.id.status_indicator, View.GONE);
+            }
             
             // Add the card to the container
             views.addView(R.id.arrivals_container, cardView);
