@@ -1324,4 +1324,7 @@
     <string name="widget_settings_current_stop">Current stop: %1$s - %2$s</string>
     <string name="widget_settings_change_stop">Change Stop</string>
     <string name="widget_settings_close">Close</string>
+
+    <!-- Stop Info -->
+    <string name="stop_info_no_name">Unnamed stop</string>
 </resources>

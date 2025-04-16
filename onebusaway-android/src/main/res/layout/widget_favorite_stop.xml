@@ -85,7 +85,26 @@
         android:background="#FFFFFF"
         android:padding="0dp">
 
-        <!-- No arrivals message (shown when empty) -->
+        <!-- Loading layout -->
+        <include
+            android:id="@+id/loading_layout"
+            layout="@layout/loading"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <!-- Empty text shown when no arrivals -->
+        <TextView
+            android:id="@+id/empty_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:gravity="center"
+            android:textColor="@android:color/black"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <!-- Legacy empty view - for backward compatibility -->
         <TextView
             android:id="@+id/no_arrivals"
             android:layout_width="match_parent"
@@ -93,31 +112,39 @@
             android:padding="8dp"
             android:gravity="center"
             android:textColor="@android:color/black"
-            android:textSize="14sp" />
-
-        <!-- Scrollable ListView for arrival cards - optimized for 4x2 size -->
-        <ListView
-            android:id="@+id/arrivals_list"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:divider="@drawable/list_divider"
-            android:dividerHeight="1dp"
-            android:scrollbars="vertical"
-            android:scrollbarStyle="outsideOverlay"
-            android:scrollbarAlwaysDrawVerticalTrack="true"
-            android:fadeScrollbars="false"
-            android:nestedScrollingEnabled="true"
-            android:padding="0dp"
-            android:clipToPadding="false" />
-            
-        <!-- LinearLayout for arrival cards (legacy, will be removed) -->
-        <LinearLayout
-            android:id="@+id/arrivals_container"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:divider="@drawable/list_divider"
-            android:showDividers="middle"
+            android:textSize="14sp"
             android:visibility="gone" />
+
+        <!-- Wrapper for the arrival list -->
+        <FrameLayout
+            android:id="@+id/arrival_list_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <!-- Scrollable ListView for arrival cards - optimized for 4x2 size -->
+            <ListView
+                android:id="@+id/arrivals_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@drawable/list_divider"
+                android:dividerHeight="1dp"
+                android:scrollbars="vertical"
+                android:scrollbarStyle="outsideOverlay"
+                android:scrollbarAlwaysDrawVerticalTrack="true"
+                android:fadeScrollbars="false"
+                android:nestedScrollingEnabled="true"
+                android:padding="0dp"
+                android:clipToPadding="false" />
+                
+            <!-- LinearLayout for arrival cards (legacy, will be removed) -->
+            <LinearLayout
+                android:id="@+id/arrivals_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:divider="@drawable/list_divider"
+                android:showDividers="middle"
+                android:visibility="gone" />
+        </FrameLayout>
     </FrameLayout>
 </RelativeLayout> 

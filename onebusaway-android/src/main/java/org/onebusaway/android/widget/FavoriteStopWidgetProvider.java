@@ -40,6 +40,7 @@ import org.onebusaway.android.R;
 import org.onebusaway.android.ui.HomeActivity;
 import org.onebusaway.android.widget.FavoriteStopManager.FavoriteStop;
 import org.onebusaway.android.widget.FavoriteStopsAdapter.OnStopSelectedListener;
+import org.onebusaway.android.widget.WidgetUtil;
 
 import java.util.List;
 
@@ -52,6 +53,10 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_REFRESH_WIDGET = "org.onebusaway.android.widget.ACTION_REFRESH_WIDGET";
     private static final String ACTION_OPEN_SETTINGS = "org.onebusaway.android.widget.ACTION_OPEN_SETTINGS";
     public static final String ACTION_AUTO_UPDATE = "org.onebusaway.android.widget.ACTION_AUTO_UPDATE";
+    public static final String ACTION_ITEM_CLICK = "org.onebusaway.android.widget.ACTION_ITEM_CLICK";
+    
+    // Intent extras
+    public static final String EXTRA_ARRIVAL_INFO = "org.onebusaway.android.widget.EXTRA_ARRIVAL_INFO";
     
     // Shared preferences for storing selected stops
     public static final String PREFS_NAME = "org.onebusaway.android.widget.FavoriteStopWidgetProvider";
@@ -60,11 +65,17 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     public static final String PREF_AUTO_REFRESH_PREFIX = "auto_refresh_";
     public static final String PREF_REFRESH_INTERVAL_PREFIX = "refresh_interval_";
     
-    // Default update interval (30 minutes)
-    private static final long DEFAULT_UPDATE_INTERVAL_MS = 30 * 60 * 1000;
+    // More reasonable default update interval (5 minutes)
+    private static final long DEFAULT_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+    
+    // Minimum update interval (1 minute) to prevent excessive API calls
+    private static final long MIN_UPDATE_INTERVAL_MS = 60 * 1000;
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        // Disable OneSignal in widget processes to prevent login errors
+        WidgetUtil.disableOneSignalInWidgetProcess(context);
+        
         // Ensure the Application class is initialized
         initializeAppIfNeeded(context);
         
@@ -182,6 +193,9 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
     
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Disable OneSignal in widget processes to prevent login errors
+        WidgetUtil.disableOneSignalInWidgetProcess(context);
+        
         // Ensure the Application class is initialized
         initializeAppIfNeeded(context);
         
@@ -245,21 +259,6 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         // Set up the scrollable list for arrivals
         Log.d(TAG, "Setting up scrollable arrivals list");
         
-        // Set up the intent that starts the ArrivalsWidgetListService, which provides the views for this collection
-        Intent intent = new Intent(context, ArrivalsWidgetListService.class);
-        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
-        intent.putExtra("stopId", getStopIdForWidget(context, appWidgetId));
-        intent.putExtra("isNarrow", isNarrowWidget(appWidgetManager, appWidgetId));
-        intent.putExtra("isFullWidth", isFullWidthWidget(appWidgetManager, appWidgetId));
-        intent.putExtra("sizeCategory", getWidgetSizeCategory(appWidgetManager, appWidgetId));
-        
-        // When intents are compared, the extras are ignored, so we need to put the widget id
-        // as data to make the intent unique
-        intent.setData(android.net.Uri.parse("widget://" + appWidgetId));
-        
-        // Set up the RemoteViews object to use a RemoteViews adapter
-        views.setRemoteAdapter(R.id.arrivals_list, intent);
-        
         // Always ensure the ListView is visible and the legacy container is hidden
         views.setViewVisibility(R.id.arrivals_container, View.GONE);
         views.setViewVisibility(R.id.arrivals_list, View.VISIBLE);
@@ -267,9 +266,37 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         // The empty view is displayed when the collection has no items
         views.setEmptyView(R.id.arrivals_list, R.id.no_arrivals);
         
+        // Check if we have a saved stop for this widget
+        String stopId = getStopIdForWidget(context, appWidgetId);
+        String stopName = getStopNameForWidget(context, appWidgetId);
+        
+        Log.d(TAG, "Saved stop for widget " + appWidgetId + ": ID=" + stopId + ", name=" + stopName);
+        
+        if (stopId != null) {
+            // We have a saved stop, update the widget with that stop's data
+            views.setTextViewText(R.id.stop_name, stopName != null ? stopName : "Loading...");
+            views.setTextViewText(R.id.direction, "Loading arrivals...");
+            views.setTextViewText(R.id.no_arrivals, "Please wait while we fetch data...");
+        } else {
+            // No saved stop
+            Log.d(TAG, "No saved stop, showing default view");
+            
+            // Show loading state
+            views.setTextViewText(R.id.stop_name, "OneBusAway");
+            views.setTextViewText(R.id.direction, "Initializing widget...");
+            views.setTextViewText(R.id.no_arrivals, "Finding your favorite stops...");
+        }
+        
         // Create an empty/null pending intent for the list items - this makes them non-clickable
-        PendingIntent nullIntent = null;
-        views.setPendingIntentTemplate(R.id.arrivals_list, nullIntent);
+        // Use a dummy broadcast intent instead of null to properly disable click actions
+        Intent dummyIntent = new Intent(context, FavoriteStopWidgetProvider.class);
+        dummyIntent.setAction("dummy.do.nothing.action");
+        PendingIntent dummyPendingIntent = PendingIntent.getBroadcast(
+                context, 
+                appWidgetId + 3000, 
+                dummyIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        views.setPendingIntentTemplate(R.id.arrivals_list, dummyPendingIntent);
 
         // Set up settings intent (using header area)
         Intent settingsIntent = new Intent(context, FavoriteStopWidgetProvider.class);
@@ -295,74 +322,82 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, appWidgetId + 2000, refreshIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent);
-
-        // Check if we have a saved stop for this widget
-        String stopId = getStopIdForWidget(context, appWidgetId);
-        String stopName = getStopNameForWidget(context, appWidgetId);
         
-        Log.d(TAG, "Saved stop for widget " + appWidgetId + ": ID=" + stopId + ", name=" + stopName);
-        
-        if (stopId != null) {
-            // We have a saved stop, update the widget with that stop's data
-            views.setTextViewText(R.id.stop_name, stopName != null ? stopName : "Loading...");
-            views.setTextViewText(R.id.direction, "Loading arrivals...");
-            views.setTextViewText(R.id.no_arrivals, "Please wait while we fetch data...");
-            
-            // Update the widget UI immediately
+        // First update the widget UI with our already populated views
+        try {
+            Log.d(TAG, "Updating widget UI for " + appWidgetId);
             appWidgetManager.updateAppWidget(appWidgetId, views);
-            
-            Log.d(TAG, "Widget UI updated with saved stop, requesting arrivals");
-            
-            // Start a proactive loading strategy with minimal retries
-            startProactiveLoading(context, stopId, stopName, appWidgetId);
-        } else {
-            // No saved stop, get the most frequently used favorite stop
-            Log.d(TAG, "No saved stop, looking for most frequent stop");
-            
-            // Show loading state
-            views.setTextViewText(R.id.stop_name, "OneBusAway");
-            views.setTextViewText(R.id.direction, "Initializing widget...");
-            views.setTextViewText(R.id.no_arrivals, "Finding your favorite stops...");
-            appWidgetManager.updateAppWidget(appWidgetId, views);
-            
-            // Run in a separate thread to avoid blocking
-            new Thread(() -> {
-                // Try to find a favorite stop
-                FavoriteStop favoriteStop = FavoriteStopManager.getMostFrequentStop(context);
-                
-                if (favoriteStop != null) {
-                    // Display the favorite stop information
-                    Log.d(TAG, "Found most frequent stop: " + favoriteStop.getStopName() + " (ID: " + favoriteStop.getStopId() + ")");
-                    
-                    // Save this stop for the widget right away
-                    Log.d(TAG, "Saving most frequent stop for widget");
-                    saveStopForWidget(context, appWidgetId, favoriteStop.getStopId(), favoriteStop.getStopName());
-                    
-                    // Update views with stop info
-                    views.setTextViewText(R.id.stop_name, favoriteStop.getStopName());
-                    views.setTextViewText(R.id.direction, "Loading arrivals...");
-                    views.setTextViewText(R.id.no_arrivals, "Please wait while we fetch data...");
-                    
-                    // Update the widget right away
-                    appWidgetManager.updateAppWidget(appWidgetId, views);
-                    
-                    // Notify the widget service that data changed to update the ListView
-                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
-                    
-                    // Start a proactive loading strategy with minimal retries
-                    startProactiveLoading(context, favoriteStop.getStopId(), favoriteStop.getStopName(), appWidgetId);
-                } else {
-                    // No favorite stops - display default message
-                    Log.d(TAG, "No favorite stops found");
-                    views.setTextViewText(R.id.stop_name, "OneBusAway");
-                    views.setTextViewText(R.id.direction, "No favorite stops");
-                    views.setTextViewText(R.id.no_arrivals, "No favorite stops found.\nAdd stops in the app first, then tap on a stop to activate the widget.");
-                    
-                    // Update the widget
-                    appWidgetManager.updateAppWidget(appWidgetId, views);
-                }
-            }).start();
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating widget UI", e);
         }
+        
+        // Now set up the RemoteAdapter in a separate step
+        try {
+            // Set up the intent that starts the ArrivalsWidgetListService, which provides the views for this collection
+            Intent intent = new Intent(context, ArrivalsWidgetListService.class);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+            intent.putExtra("stopId", stopId);
+            intent.putExtra("isNarrow", isNarrowWidget(appWidgetManager, appWidgetId));
+            intent.putExtra("isFullWidth", isFullWidthWidget(appWidgetManager, appWidgetId));
+            intent.putExtra("sizeCategory", getWidgetSizeCategory(appWidgetManager, appWidgetId));
+            
+            // When intents are compared, the extras are ignored, so we need to put the widget id
+            // as data to make the intent unique
+            intent.setData(android.net.Uri.parse("widget://" + appWidgetId));
+            
+            Log.d(TAG, "Setting remote adapter for widget " + appWidgetId);
+            // Set up the RemoteViews object to use a RemoteViews adapter
+            RemoteViews listViews = new RemoteViews(context.getPackageName(), R.layout.widget_favorite_stop);
+            listViews.setRemoteAdapter(R.id.arrivals_list, intent);
+            appWidgetManager.updateAppWidget(appWidgetId, listViews);
+            
+            // Further initialize if we have a stop
+            if (stopId != null) {
+                // Start a proactive loading strategy with minimal retries
+                startProactiveLoading(context, stopId, stopName, appWidgetId);
+            } else {
+                // No saved stop, get the most frequently used favorite stop
+                findAndSetMostFrequentStop(context, appWidgetManager, appWidgetId, views);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up remote adapter", e);
+        }
+    }
+    
+    /**
+     * Find and set the most frequent stop for a widget in a background thread
+     */
+    private void findAndSetMostFrequentStop(Context context, AppWidgetManager appWidgetManager, 
+            int appWidgetId, RemoteViews views) {
+        Log.d(TAG, "Looking for most frequent stop for widget " + appWidgetId);
+        
+        // Run in a separate thread to avoid blocking
+        new Thread(() -> {
+            // Try to find a favorite stop
+            FavoriteStop favoriteStop = FavoriteStopManager.getMostFrequentStop(context);
+            
+            if (favoriteStop != null) {
+                // Display the favorite stop information
+                Log.d(TAG, "Found most frequent stop: " + favoriteStop.getStopName() + " (ID: " + favoriteStop.getStopId() + ")");
+                
+                // Save this stop for the widget right away
+                Log.d(TAG, "Saving most frequent stop for widget");
+                saveStopForWidget(context, appWidgetId, favoriteStop.getStopId(), favoriteStop.getStopName());
+            } else {
+                // No favorite stops - display default message
+                Log.d(TAG, "No favorite stops found");
+                views.setTextViewText(R.id.stop_name, "OneBusAway");
+                views.setTextViewText(R.id.direction, "No favorite stops");
+                views.setTextViewText(R.id.no_arrivals, "No favorite stops found.\nAdd stops in the app first, then tap on a stop to activate the widget.");
+                
+                // Update the widget
+                try {
+                    appWidgetManager.updateAppWidget(appWidgetId, views);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error updating widget with no stops message", e);
+                }
+            }
+        }).start();
     }
 
     @Override
@@ -408,12 +443,17 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         // Update the widget to reflect the changes
         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
         
-        // Notify the widget that the data has changed to refresh the list view
-        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
-        
-        // Update the widget UI
+        // Create a safe update sequence - first update the widget UI
         FavoriteStopWidgetProvider provider = new FavoriteStopWidgetProvider();
         provider.updateWidget(context, appWidgetManager, appWidgetId);
+        
+        // AFTER updating the widget UI, then notify data changes for the list
+        try {
+            Log.d(TAG, "Notifying data changes for arrivals list");
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+        } catch (Exception e) {
+            Log.e(TAG, "Error notifying widget data changes", e);
+        }
     }
     
     /**
@@ -629,16 +669,24 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                 Log.d(TAG, "First attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                 
+                // Wait a little to give the request time to execute before notifying
+                Thread.sleep(250); // Reduced wait time
+                
                 // Notify the adapter about data change only if widget still exists
                 if (isWidgetValid(context, appWidgetId, stopId)) {
-                    AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                    try {
+                        AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                        Log.d(TAG, "Notified arrivals list data change");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error notifying widget data changes (1st attempt)", e);
+                    }
                 } else {
                     Log.d(TAG, "Widget no longer valid, skipping notification");
                     return;
                 }
                 
-                // Wait for a shorter time before second attempt - 2 seconds is enough
-                Thread.sleep(2000);
+                // Wait for a shorter time before second attempt - 1.5 seconds is enough
+                Thread.sleep(1500);
                 
                 // Validate the widget and stop ID still exist
                 if (!isWidgetValid(context, appWidgetId, stopId)) {
@@ -646,12 +694,30 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
                     return;
                 }
                 
-                // Second and final attempt - most data should be loaded by now
+                // Second attempt - this should be sufficient with our improved caching
                 Log.d(TAG, "Second attempt to load arrivals data");
                 ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                 
+                // Wait a little to give the request time to execute before notifying
+                Thread.sleep(250); // Reduced wait time
+                
                 // Notify the adapter about data change only if widget still exists
                 if (isWidgetValid(context, appWidgetId, stopId)) {
+                    try {
+                        AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                        Log.d(TAG, "Notified arrivals list data change (2nd attempt)");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error notifying widget data changes (2nd attempt)", e);
+                    }
+                }
+                
+                // Schedule a background refresh after a short delay (10 seconds) to ensure
+                // the widget has the most current data if the initial requests were slow
+                Thread.sleep(8000);
+                
+                if (isWidgetValid(context, appWidgetId, stopId)) {
+                    Log.d(TAG, "Final background refresh to ensure current data");
+                    ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                     AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
                 }
                 
@@ -660,7 +726,8 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             } catch (Exception e) {
                 Log.e(TAG, "Error during proactive loading", e);
                 try {
-                    // One final attempt if there was an error
+                    // One final attempt if there was an error, but don't notify changes
+                    // since that might be causing the errors
                     ArrivalsWidgetService.requestUpdate(context.getApplicationContext(), stopId, stopName, appWidgetId);
                     scheduleWidgetUpdate(context, appWidgetId);
                 } catch (Exception ex) {
@@ -723,8 +790,12 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
         cancelWidgetUpdates(context, appWidgetId);
         
         if (autoRefresh) {
-            // Get refresh interval in minutes
-            int refreshIntervalMinutes = prefs.getInt(PREF_REFRESH_INTERVAL_PREFIX + appWidgetId, 30);
+            // Get refresh interval in minutes, default to 5 minutes
+            int refreshIntervalMinutes = prefs.getInt(PREF_REFRESH_INTERVAL_PREFIX + appWidgetId, 5);
+            
+            // Ensure minimum interval to prevent excessive updates
+            refreshIntervalMinutes = Math.max(1, refreshIntervalMinutes);
+            
             long refreshIntervalMs = refreshIntervalMinutes * 60 * 1000L;
             
             Log.d(TAG, "Scheduling widget " + appWidgetId + " updates every " + refreshIntervalMinutes + " minutes");
@@ -742,25 +813,34 @@ public class FavoriteStopWidgetProvider extends AppWidgetProvider {
             
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    // For Android 12+, check if we can schedule exact alarms
-                    if (alarmManager.canScheduleExactAlarms()) {
-                        // Use setExactAndAllowWhileIdle for more precise timing if allowed
+                    // For Android 12+, use inexact alarms which are better for battery
+                    alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+                    Log.d(TAG, "Set inexact alarm for widget " + appWidgetId + " (Android 12+)");
+                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    // For Android 6-11, prioritize doze-compatible alarms
+                    if (refreshIntervalMinutes <= 10) {
+                        // For shorter intervals, use more precise timing
                         alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
                         Log.d(TAG, "Set exact and allow idle alarm for widget " + appWidgetId);
                     } else {
-                        // Fall back to setAndAllowWhileIdle
+                        // For longer intervals, battery optimization is more important
                         alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-                        Log.d(TAG, "Set and allow idle alarm for widget " + appWidgetId);
+                        Log.d(TAG, "Set inexact alarm for widget " + appWidgetId);
                     }
-                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    // For Android 6+, use setExactAndAllowWhileIdle
-                    alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-                    Log.d(TAG, "Set exact and allow idle alarm for widget " + appWidgetId);
                 } else {
                     // For older versions, use setExact
                     alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
                     Log.d(TAG, "Set exact alarm for widget " + appWidgetId);
                 }
+                
+                // Also register a backup repeating alarm to ensure updates happen
+                // even if the exact/idle alarms are delayed by the system
+                long backupIntervalMs = Math.max(refreshIntervalMs * 3, 15 * 60 * 1000); // At least 15 minutes
+                alarmManager.setRepeating(android.app.AlarmManager.RTC_WAKEUP, 
+                        System.currentTimeMillis() + backupIntervalMs, 
+                        backupIntervalMs, 
+                        pendingIntent);
+                Log.d(TAG, "Set backup repeating alarm every " + (backupIntervalMs / 60000) + " minutes");
             } catch (Exception e) {
                 // If any of the above fail, fall back to the most basic approach
                 Log.e(TAG, "Error setting preferred alarm type, falling back to basic alarm", e);

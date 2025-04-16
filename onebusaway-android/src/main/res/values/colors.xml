@@ -124,4 +124,11 @@
     <color name="zoom_btn_color_default">#BEFFFFFF</color>
     <color name="zoom_btn_color_pressed">#82CCCCCC</color>
     <color name="zoom_btn_color">#82CCCCCC</color>
+
+    <!-- Widget colors for arrival status -->
+    <color name="default_route_color">#0044C8</color> <!-- Dark blue -->
+    <color name="widget_on_time">#008000</color> <!-- Green -->
+    <color name="widget_delayed">#B71C1C</color> <!-- Red -->
+    <color name="widget_scheduled">#757575</color> <!-- Gray -->
+    <color name="widget_now">#D32F2F</color> <!-- Bright red -->
 </resources>

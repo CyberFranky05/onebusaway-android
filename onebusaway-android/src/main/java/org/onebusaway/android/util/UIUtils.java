@@ -123,6 +123,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -2050,5 +2051,23 @@ public final class UIUtils {
         if (themeValue.equalsIgnoreCase(Application.get().getString(R.string.preferences_app_theme_option_light))) {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         }
+    }
+
+    /**
+     * Returns a human-readable time formatted using the local time zone
+     *
+     * @param context The context
+     * @param time The time in milliseconds to format
+     * @param includeSeconds True to include seconds, false for just hours and minutes
+     * @return A human-readable time formatted using the local time zone
+     */
+    public static String getTimeWithContext(Context context, long time, boolean includeSeconds) {
+        SimpleDateFormat timeFormat;
+        if (includeSeconds) {
+            timeFormat = new SimpleDateFormat("h:mm:ss a", Locale.getDefault());
+        } else {
+            timeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+        }
+        return timeFormat.format(new Date(time));
     }
 }

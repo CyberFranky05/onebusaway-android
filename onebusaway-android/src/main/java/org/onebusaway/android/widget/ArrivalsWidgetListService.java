@@ -25,6 +25,7 @@ import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.LruCache;
 import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
@@ -35,304 +36,333 @@ import org.onebusaway.android.io.elements.ObaArrivalInfo;
 import org.onebusaway.android.io.request.ObaArrivalInfoRequest;
 import org.onebusaway.android.io.request.ObaArrivalInfoResponse;
 import org.onebusaway.android.provider.ObaContract;
+import org.onebusaway.android.ui.ArrivalInfo;
 import org.onebusaway.android.util.UIUtils;
+import org.onebusaway.android.widget.WidgetUtil;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeoutException;
+import android.os.Handler;
+import android.os.Looper;
 
 /**
  * RemoteViewsService that provides a scrollable arrival list for the widget
  */
 public class ArrivalsWidgetListService extends RemoteViewsService {
     private static final String TAG = "ArrivalsWidgetListSvc";
-
-    @Override
-    public RemoteViewsFactory onGetViewFactory(Intent intent) {
-        // Always trigger onDataSetChanged when the service starts
-        // This ensures the list is always populated and scrollable
-        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(this);
-        int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
-                AppWidgetManager.INVALID_APPWIDGET_ID);
-        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+    
+    // Static cache to share data across service instances
+    private static final Map<String, CachedArrivals> sArrivalsCache = new ConcurrentHashMap<>();
+    private static final Map<String, Integer> sRouteColorCache = new ConcurrentHashMap<>();
+    
+    // Shorter cache timeout - 15 seconds to ensure fresh data while avoiding excessive API calls
+    private static final long CACHE_TIMEOUT_MS = 15 * 1000;
+    
+    // Add a flag to prevent multiple simultaneous requests for the same stop
+    private static final Set<String> sCurrentlyFetching = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    
+    // Background executor for cache cleanup
+    private static final ScheduledExecutorService sCacheCleanupExecutor = 
+            Executors.newSingleThreadScheduledExecutor();
+    
+    // Network request executor - limit to 2 concurrent requests
+    private static final ExecutorService sNetworkExecutor = Executors.newFixedThreadPool(2);
+    
+    static {
+        // Schedule cache cleanup every 2 minutes
+        sCacheCleanupExecutor.scheduleAtFixedRate(() -> {
             try {
-                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.arrivals_list);
+                cleanupCache();
             } catch (Exception e) {
-                Log.e(TAG, "Error notifying data changes during factory creation", e);
+                Log.e(TAG, "Error during cache cleanup", e);
+            }
+        }, 2, 2, TimeUnit.MINUTES);
+    }
+    
+    /**
+     * Clean up expired cache entries
+     */
+    private static void cleanupCache() {
+        long now = System.currentTimeMillis();
+        int removedEntries = 0;
+        
+        // Remove expired entries from arrivals cache
+        for (Iterator<Map.Entry<String, CachedArrivals>> it = sArrivalsCache.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<String, CachedArrivals> entry = it.next();
+            if (now - entry.getValue().timestamp > CACHE_TIMEOUT_MS) {
+                it.remove();
+                removedEntries++;
             }
         }
         
+        // Log cache stats
+        Log.d(TAG, "Cache cleanup completed. Removed " + removedEntries + " entries. Remaining entries: " + 
+                sArrivalsCache.size() + ", route colors: " + sRouteColorCache.size());
+    }
+
+    @Override
+    public RemoteViewsFactory onGetViewFactory(Intent intent) {
+        Log.d(TAG, "Creating RemoteViewsFactory");
+        
+        // Disable OneSignal in widget processes to prevent login errors
+        WidgetUtil.disableOneSignalInWidgetProcess(this);
+        
+        // Check for required parameters to avoid NPE
+        if (intent == null) {
+            Log.e(TAG, "Intent is null when creating factory");
+            return new ArrivalsRemoteViewsFactory(this.getApplicationContext(), new Intent());
+        }
+        
+        int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 
+                AppWidgetManager.INVALID_APPWIDGET_ID);
+        
+        Log.d(TAG, "Creating factory for widget ID: " + appWidgetId);
+        
+        // Safe to create factory now - don't notify at this stage
         return new ArrivalsRemoteViewsFactory(this.getApplicationContext(), intent);
+    }
+    
+    /**
+     * Class to hold cached arrival data
+     */
+    private static class CachedArrivals {
+        final List<ObaArrivalInfo> arrivals;
+        final long timestamp;
+        int hitCount = 0;
+        
+        CachedArrivals(List<ObaArrivalInfo> arrivals) {
+            this.arrivals = arrivals;
+            this.timestamp = System.currentTimeMillis();
+        }
+        
+        boolean isExpired() {
+            return System.currentTimeMillis() - timestamp > CACHE_TIMEOUT_MS;
+        }
+        
+        void registerHit() {
+            hitCount++;
+        }
     }
 
     /**
      * RemoteViewsFactory for arrivals list items
      */
     private static class ArrivalsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
-        private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("h:mm a", Locale.getDefault());
-        private static final int MAX_ARRIVALS = 10;
+        private static final String TAG = "ArrivalsWidgetList";
+        
+        private static final int MAX_ARRIVALS = 10; // Limit number of arrivals to improve performance
         
         // Color constants
         private static final int COLOR_ON_TIME = Color.parseColor("#008000"); // Green
         private static final int COLOR_DELAYED = Color.parseColor("#b71c1c"); // Red
         private static final int COLOR_SCHEDULED = Color.parseColor("#757575"); // Gray
         private static final int COLOR_NOW = Color.parseColor("#D32F2F"); // Bright red
-
-        // Status constants
-        private static final String DEVIATION_EARLY = "early";
-        private static final String DEVIATION_DELAYED = "delayed";
-        private static final String DEVIATION_ON_TIME = "ontime";
         
-        // Intent extras for the widget
-        private static final String EXTRA_ARRIVAL_INFO = "arrival_info";
-
-        // Cache the application context to prevent memory leaks
-        private final Context mContext;
-        private final int mWidgetId;
+        private Context mContext;
         private String mStopId;
-        // Use ArrayList for better performance with indexed access
-        private final List<ObaArrivalInfo> mArrivals = new ArrayList<>();
-        private final boolean mIsNarrow;
-        private final int mSizeCategory; // 0=small, 1=medium, 2=large, 3=full-width
+        private String mStopName;
+        private int mAppWidgetId;
+        private org.onebusaway.android.io.request.ObaArrivalInfoResponse mResponse;
+        private List<org.onebusaway.android.ui.ArrivalInfo> mArrivalInfo = new ArrayList<>();
+        private long mLastUpdated = 0;
         
-        // Always use maximum available arrivals for scrolling
-        // This ensures proper scrolling behavior even if the widget height changes
-        private final int mMaxArrivalsToShow = MAX_ARRIVALS;
-
-        // Keep a cache of RemoteViews to improve performance
-        private final int mLayoutResourceId;
-
         public ArrivalsRemoteViewsFactory(Context context, Intent intent) {
-            // Always use application context to prevent memory leaks
             mContext = context.getApplicationContext();
-            mWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+            mAppWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
             mStopId = intent.getStringExtra("stopId");
-            mIsNarrow = intent.getBooleanExtra("isNarrow", false);
-            mSizeCategory = intent.getIntExtra("sizeCategory", 1); // Default to medium if not specified
+            mStopName = intent.getStringExtra("stopName");
             
-            // Just use the standard layout for all sizes - we'll adjust the content dynamically
-            mLayoutResourceId = R.layout.widget_arrival_card;
-            
-            Log.d(TAG, "Created factory for widget ID: " + mWidgetId + 
-                  ", stop ID: " + mStopId + ", size category: " + mSizeCategory +
-                  ", max arrivals: " + mMaxArrivalsToShow);
+            Log.d(TAG, "RemoteViewsFactory initialized: widgetId=" + mAppWidgetId + ", stopId=" + mStopId + ", stopName=" + mStopName);
         }
 
         @Override
         public void onCreate() {
-            // Pre-allocate the arrivals list
-            mArrivals.clear();
-        }
-
-        @Override
-        public void onDataSetChanged() {
-            // Load arrival data
-            mArrivals.clear();
-            
-            if (TextUtils.isEmpty(mStopId)) {
-                Log.d(TAG, "No stop ID provided, skipping arrivals fetch");
-                return;
-            }
-            
-            try {
-                // First, ensure the app is properly initialized
-                FavoriteStopWidgetProvider.initializeAppIfNeeded(mContext);
-                
-                // Get current stop ID
-                String stopId = FavoriteStopWidgetProvider.getStopIdForWidget(mContext, mWidgetId);
-                if (stopId == null) {
-                    stopId = mStopId;
-                } else {
-                    mStopId = stopId;
-                }
-                
-                if (TextUtils.isEmpty(stopId)) {
-                    Log.d(TAG, "No stop ID available for widget " + mWidgetId);
-                    return;
-                }
-                
-                Log.d(TAG, "Loading arrivals for stop: " + stopId);
-                
-                // Fetch arrival data
-                ObaArrivalInfoRequest request = ObaArrivalInfoRequest.newRequest(mContext, stopId);
-                ObaArrivalInfoResponse response = request.call();
-                
-                if (response == null || response.getCode() != 200) {
-                    Log.e(TAG, "Error fetching arrivals");
-                    return;
-                }
-                
-                ObaArrivalInfo[] arrivals = response.getArrivalInfo();
-                if (arrivals != null && arrivals.length > 0) {
-                    // Add arrivals to our list (limit to MAX_ARRIVALS)
-                    int count = Math.min(arrivals.length, MAX_ARRIVALS);
-                    for (int i = 0; i < count; i++) {
-                        mArrivals.add(arrivals[i]);
-                    }
-                    Log.d(TAG, "Loaded " + mArrivals.size() + " arrivals");
-                } else {
-                    Log.d(TAG, "No arrivals available for stop");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error loading arrivals", e);
-            }
+            Log.d(TAG, "onCreate");
         }
 
         @Override
         public void onDestroy() {
-            // Clean up resources here
+            Log.d(TAG, "onDestroy");
+            mArrivalInfo.clear();
         }
 
         @Override
         public int getCount() {
-            // Return the number of items in the data set
-            return mArrivals.size();
-        }
-
-        @Override
-        public RemoteViews getViewAt(int position) {
-            // Position will be -1 sometimes when called from the framework
-            if (position < 0 || position >= mArrivals.size()) {
-                return null;
-            }
-
-            // Get arrival info
-            ObaArrivalInfo arrival = mArrivals.get(position);
-            
-            // Create remote views for this arrival
-            RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_arrival_card);
-            
-            // Route information
-            rv.setTextViewText(R.id.route_name, arrival.getShortName());
-            
-            // Set route color if available
-            int color = getRouteColor(arrival);
-            rv.setTextColor(R.id.route_name, color);
-            rv.setInt(R.id.route_name, "setBackgroundColor", color);
-            
-            // Set headsign/destination
-            rv.setTextViewText(R.id.destination, arrival.getHeadsign());
-            
-            // Calculate ETA in minutes
-            long eta = calculateEta(arrival);
-            rv.setTextViewText(R.id.eta, formatMinutes(eta));
-            
-            // Set ETA color based on status
-            int statusColor = getStatusColor(arrival);
-            rv.setTextColor(R.id.eta, statusColor);
-            rv.setTextColor(R.id.eta_min, statusColor);
-            
-            // Status text
-            String statusText = formatStatusText(arrival, eta);
-            rv.setTextViewText(R.id.status, statusText);
-            
-            // Set click intent for this arrival
-            Intent intent = new Intent();
-            intent.putExtra(EXTRA_ARRIVAL_INFO, arrival);
-            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, mWidgetId);
-            rv.setOnClickFillInIntent(R.id.route_name, intent);
-            
-            return rv;
-        }
-
-        @Override
-        public RemoteViews getLoadingView() {
-            // Return a view to display while the list is loading
-            return null;
-        }
-
-        @Override
-        public int getViewTypeCount() {
-            // Return the number of types of views that will be created by this factory
-            return 1;
+            return mArrivalInfo.size();
         }
 
         @Override
         public long getItemId(int position) {
-            // Return the stable ID of the item at position
             return position;
         }
 
         @Override
         public boolean hasStableIds() {
-            // Return true if the IDs are stable across changes to the adapter's data
             return true;
         }
 
-        /**
-         * Calculate ETA in minutes
-         */
-        private long calculateEta(ObaArrivalInfo arrival) {
-            long now = System.currentTimeMillis();
-            long arrivalTime = arrival.getPredicted() ? 
-                    arrival.getPredictedArrivalTime() : 
-                    arrival.getScheduledArrivalTime();
-            
-            // Convert to minutes, round up if necessary
-            return Math.max(0, (arrivalTime - now) / 60000);
-        }
-        
-        /**
-         * Format minutes for display
-         */
-        private String formatMinutes(long minutes) {
-            if (minutes <= 0) {
-                return "0";
-            }
-            return String.valueOf(minutes);
-        }
-
-        /**
-         * Format status text based on arrival info
-         */
-        private String formatStatusText(ObaArrivalInfo arrival, long etaMinutes) {
-            if (etaMinutes <= 0) {
-                return "Arriving now";
+        @Override
+        public RemoteViews getViewAt(int position) {
+            if (position < 0 || position >= mArrivalInfo.size()) {
+                Log.e(TAG, "Invalid position: " + position);
+                return null;
             }
             
-            SimpleDateFormat timeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
-            long arrivalTime = arrival.getPredicted() ? 
-                    arrival.getPredictedArrivalTime() : 
-                    arrival.getScheduledArrivalTime();
+            org.onebusaway.android.ui.ArrivalInfo info = mArrivalInfo.get(position);
+            RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.arrival_list_widget_item);
             
-            String time = timeFormat.format(arrivalTime);
+            // Set the route name (number)
+            rv.setTextViewText(R.id.route_name, info.getInfo().getShortName());
             
-            if (arrival.getPredicted()) {
-                return "Arriving at " + time;
-            } else {
-                return "Scheduled: " + time;
-            }
+            // Set the route color
+            int colorCode = getRouteColor(info);
+            rv.setTextColor(R.id.route_name, colorCode);
+            
+            // Set the headsign
+            rv.setTextViewText(R.id.headsign, info.getInfo().getHeadsign());
+            
+            // Set arrival time
+            rv.setTextViewText(R.id.eta, info.getTimeText());
+            
+            // Set status text and color
+            rv.setTextViewText(R.id.status, info.getStatusText());
+            int statusColor = getStatusColor(info);
+            rv.setTextColor(R.id.status, statusColor);
+            
+            // Set the list item click intent with position data for handling
+            Intent fillInIntent = new Intent();
+            fillInIntent.putExtra(FavoriteStopWidgetProvider.EXTRA_ARRIVAL_INFO, position);
+            rv.setOnClickFillInIntent(R.id.arrival_item, fillInIntent);
+            
+            // Make the entire item clickable
+            rv.setOnClickFillInIntent(R.id.arrival_item_layout, fillInIntent);
+            
+            return rv;
         }
 
         /**
-         * Get color for route display
+         * Get the appropriate color for a route
          */
-        private int getRouteColor(ObaArrivalInfo arrival) {
-            try {
-                return Color.parseColor("#" + arrival.getRouteColor());
-            } catch (Exception e) {
-                return Color.BLACK;
+        private int getRouteColor(org.onebusaway.android.ui.ArrivalInfo info) {
+            if (mResponse != null && mResponse.getRefs() != null) {
+                org.onebusaway.android.io.elements.ObaRoute route = mResponse.getRefs().getRoute(info.getInfo().getRouteId());
+                if (route != null && !TextUtils.isEmpty(route.getColor())) {
+                    return Color.parseColor("#" + route.getColor());
+                }
             }
+            // Default color if no route color available
+            return mContext.getResources().getColor(R.color.default_route_color);
         }
-        
+
         /**
          * Get color based on arrival status
          */
-        private int getStatusColor(ObaArrivalInfo arrival) {
-            long eta = calculateEta(arrival);
-            if (eta < 0) {
-                return COLOR_NOW;
+        private int getStatusColor(org.onebusaway.android.ui.ArrivalInfo info) {
+            // Get arrival status from ArrivalInfo
+            if (info.getPredicted()) {
+                // Real-time prediction
+                if (info.getEta() <= 0) {
+                    return COLOR_NOW; // Arriving now or arrived
+                } else if (info.getColor() == UIUtils.OnTimeColor) {
+                    return COLOR_ON_TIME;
+                } else if (info.getColor() == UIUtils.EarlyColor || 
+                        info.getColor() == UIUtils.DelayedColor) {
+                    return COLOR_DELAYED;
+                }
+            }
+            // Default to scheduled
+            return COLOR_SCHEDULED;
+        }
+
+        @Override
+        public RemoteViews getLoadingView() {
+            // Use default loading view
+            return null;
+        }
+
+        @Override
+        public int getViewTypeCount() {
+            return 1;
+        }
+
+        /**
+         * Called when the data for the widget should be updated
+         */
+        @Override
+        public void onDataSetChanged() {
+            Log.d(TAG, "onDataSetChanged");
+            
+            // Don't refresh data too frequently (at most every 30 seconds)
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - mLastUpdated < MIN_REFRESH_INTERVAL_MS && mArrivalInfo.size() > 0) {
+                Log.d(TAG, "Using cached data (updated " + (currentTime - mLastUpdated) + "ms ago)");
+                return;
             }
             
-            String status = arrival.getStatus();
-            if (DEVIATION_EARLY.equals(status)) {
-                return COLOR_DELAYED; // We use red for early too
-            } else if (DEVIATION_DELAYED.equals(status)) {
-                return COLOR_DELAYED;
-            } else {
-                return COLOR_ON_TIME;
+            // Clear existing data
+            mArrivalInfo.clear();
+            
+            if (mStopId == null) {
+                Log.e(TAG, "No stop ID");
+                return;
+            }
+            
+            // Fetch arrival times
+            org.onebusaway.android.io.request.ObaArrivalInfoRequest.Builder builder = 
+                    new org.onebusaway.android.io.request.ObaArrivalInfoRequest.Builder(mContext, mStopId);
+            
+            // Use default values instead of explicit minutes setting
+            org.onebusaway.android.io.request.ObaArrivalInfoRequest request = builder.build();
+            
+            try {
+                mResponse = request.call();
+                if (mResponse.getCode() == org.onebusaway.android.io.ObaApi.OBA_OK) {
+                    org.onebusaway.android.io.elements.ObaStop stop = mResponse.getStop();
+                    final org.onebusaway.android.io.elements.ObaArrivalInfo[] arrivals = mResponse.getArrivalInfo();
+                    
+                    if (arrivals != null && arrivals.length > 0) {
+                        // Convert ObaArrivalInfo to ArrivalInfo using utility method
+                        mArrivalInfo = org.onebusaway.android.util.ArrivalInfoUtils.convertObaArrivalInfo(
+                                mContext,
+                                arrivals, 
+                                null, 
+                                System.currentTimeMillis(), 
+                                true);
+                        
+                        // Limit the number of arrivals to improve performance
+                        if (mArrivalInfo.size() > MAX_ARRIVALS) {
+                            mArrivalInfo = mArrivalInfo.subList(0, MAX_ARRIVALS);
+                        }
+                        
+                        mLastUpdated = currentTime;
+                        Log.d(TAG, "Updated arrivals data: found " + mArrivalInfo.size() + " arrivals");
+                    } else {
+                        Log.d(TAG, "No arrivals found");
+                    }
+                } else {
+                    Log.e(TAG, "Error code: " + mResponse.getCode());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error fetching arrivals: " + e.getMessage(), e);
             }
         }
+        
+        // Minimum time in ms between refreshes to prevent excessive API calls
+        private static final long MIN_REFRESH_INTERVAL_MS = 30 * 1000; // 30 seconds
     }
 }
